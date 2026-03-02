@@ -1,0 +1,66 @@
+%-------------------------%
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item \small{#1}
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small #3} & \textit{\small #4} \\
+    \end{tabular*}
+  \vspace{-4pt}
+}
+
+
+\newcommand{\resumeSubSubheading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \textit{\small#1} & \textit{\small #2} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+  \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small #1 & #2 \\
+    \end{tabular*}
+  \vspace{-4pt}
+}
+
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\achievementItem}[1]{
+      \item\small{
+        \hspace{0.5em} {#1 \vspace{-0.1in}}
+  
+  }
+}
+
+\newcommand{\resumeSubHeadingListStart}{
+  \begin{itemize}[leftmargin=0.15in, label={}, topsep=4pt, itemsep=2pt]
+}
+\newcommand{\resumeSubHeadingListEnd}{
+  \end{itemize}
+}
+
+\newcommand{\resumeItemListStart}{
+  \begin{itemize}[topsep=2pt, itemsep=2pt]
+}
+\newcommand{\resumeItemListEnd}{
+  \end{itemize}
+}
+
+
+\definecolor{Black}{RGB}{0, 0, 0}
+\newcommand{\seticon}[1]{\textcolor{Black}{\csname #1\endcsname}}
+
+\newcommand{\projectLink}[1]{\href{#1}{\seticon{faGithub} \hspace{2pt}Link}}
+
+\newcommand{\sectionHeading}[1]{\color{blue}}
+
+\newcommand{\imp}[1]{\textbf{{#1}}}
+% \newcommand{\imp}[1]{{\underline{#1}}}
+
