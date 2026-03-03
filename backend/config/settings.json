@@ -1,0 +1,36 @@
+{
+	"candidate_name": "Suyesh Jadhav",
+	"llm_provider": "ollama",
+	"ollama_model": "qwen2.5:7b",
+	"ollama_model_options": [
+		"llama3.2",
+		"gemma3:4b",
+		"phi3:medium"
+	],
+	"ollama_base_url": "http://localhost:11434/v1",
+	"groq_api_key": "",
+	"notion_api_key": "",
+	"notion_database_id": "",
+	"job_types": [
+		"internship"
+	],
+	"score_threshold": 6,
+	"search_delay_seconds": 5,
+	"blocked_companies": [
+		"Lensa",
+		"Wiraa",
+		"Best Job Tool",
+		"Nxt Level",
+		"FetchJobs.co",
+		"Elevate Recruitment",
+		"North Star Staffing",
+		"hackajob",
+		"RemoteHunter",
+		"Jobs via Dice"
+	],
+	"blocked_keywords": [
+		"Staffing",
+		"Recruitment",
+		"Resource Group"
+	]
+}

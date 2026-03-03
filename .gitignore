@@ -1,2 +1,31 @@
-venv
-__pycache__
+# Python Virtual Environment
+venv/
+env/
+.env
+
+# Python Compilation Files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Application Data & Auto-Generated Local Storage
+outputs/
+tracked_jobs.csv
+
+# IDEs & Editor configurations
+.vscode/
+.idea/
+*.swp
+
+# Testing & Logs
+.pytest_cache/
+*.log
+
+# OS-generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

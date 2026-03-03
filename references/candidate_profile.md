@@ -44,6 +44,10 @@
 
 ---
 ## Scout Settings
+Hours Old: 24
+Max Results Per Query: 10
+Score Threshold: 6
+Search Delay Seconds: 5
 
 ### Blocked Companies
 - Lensa
