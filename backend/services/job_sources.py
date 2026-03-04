@@ -1,6 +1,7 @@
 import hashlib
 import json
 import urllib.request
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -47,7 +48,7 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
     for url in urls_to_fetch:
         try:
             req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req) as response:
+            with urllib.request.urlopen(req, timeout=15) as response:
                 data = json.loads(response.read().decode())
 
             for item in data:
@@ -59,6 +60,31 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
                 apply_link = item.get("url")
                 if not apply_link:
                     continue
+
+                # 2b. Skip if job posted before cutoff (hours_old)
+                hours_old = settings.get("hours_old", 72)
+                cutoff = time.time() - (hours_old * 3600)
+                date_posted = item.get("date_posted") or item.get("date_updated", 0)
+                if date_posted and date_posted < cutoff:
+                    continue
+                
+                # 2c. Category/domain filter
+                blocked_cats = settings.get("blocked_categories", [])
+                job_category = item.get("category", "")
+                if any(blocked.lower() in job_category.lower() for blocked in blocked_cats):
+                    continue
+
+                # 2d. Visa/sponsorship filter
+                visa_status = settings.get("visa_status", "no_preference")
+                sponsorship_raw = item.get("sponsorship") or ""
+                is_sponsored = any(
+                    s in sponsorship_raw.lower() 
+                    for s in ["yes", "offers", "will sponsor"]
+                )
+
+                if visa_status == "requires_sponsorship":
+                    if not is_sponsored:
+                        continue
 
                 title = item.get("title", "")
                 company = item.get("company_name", "")
@@ -108,7 +134,8 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
                     "description": description,
                     "source": "simplify",
                     "found_at": datetime.now().isoformat(),
-                    "status": "found"
+                    "status": "pending_scrape",
+                    "is_sponsored": is_sponsored
                 })
 
         except Exception as e:

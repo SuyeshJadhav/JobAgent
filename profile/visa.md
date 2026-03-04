@@ -1,3 +1,7 @@
-# Visa
-Work Authorization: F1
-Visa Sponsorship: Yes
+# Visa & Work Authorization
+WORK_AUTHORIZATION_STATUS: F1 (Student Visa)
+REQUIRES_SPONSORSHIP_NOW: Yes
+WILL_REQUIRE_SPONSORSHIP_FUTURE: Yes
+ELIGIBLE_FOR_CPT: Yes
+ELIGIBLE_FOR_OPT: Yes
+COUNTRY_OF_CITIZENSHIP: India

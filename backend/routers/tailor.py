@@ -4,7 +4,9 @@ from fastapi import APIRouter, HTTPException
 
 from backend.services.resume_tailor import run_tailor
 from backend.services.cover_letter import run_cover_letter
-from backend.services.local_tracker import get_job_by_id, load_job_details, update_status
+from backend.services.csv_tracker import (
+    get_job_by_id, update_job, load_job_details
+)
 from backend.services.llm_client import get_settings
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
@@ -12,8 +14,8 @@ OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "applications"
 
 @router.post("/{job_id}")
 def run_tailor_endpoint(job_id: str):
-    """Runs the full tailor pipeline for a job by fetching its details from Notion."""
-    # 1. Get job from Notion
+    """Runs the full tailor pipeline for a job by fetching its details from the tracking DB."""
+    # 1. Get job from tracking DB
     job = get_job_by_id(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found in tracking DB")
@@ -46,14 +48,14 @@ def run_tailor_endpoint(job_id: str):
     
     output_folder = tailor_result.get("output_dir", "") or cover_result.get("output_dir", "")
     
-    # 8. Update Notion status
+    # 8. Update tracking status
     update_kwargs = {}
     if resume_path:
-        update_kwargs["ResumePath"] = resume_path
+        update_kwargs["resume_path"] = str(resume_path)
     if cover_letter_path:
-        update_kwargs["CoverLetterPath"] = cover_letter_path
+        update_kwargs["cover_letter_path"] = str(cover_letter_path)
         
-    update_status(job_id, "tailored", **update_kwargs)
+    update_job(job_id, status="tailored", **update_kwargs)
     
     # 9. Return
     return {

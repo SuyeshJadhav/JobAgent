@@ -1,10 +1,16 @@
+import asyncio
+from backend.services.jd_scraper import scrape_full_jd
+from fastapi import APIRouter, BackgroundTasks
 from pathlib import Path
-from fastapi import APIRouter
 
 from backend.services.job_sources import fetch_simplify_jobs
 from backend.services.scorer import score_job
-from backend.services.local_tracker import add_job, get_jobs, get_job_by_id, save_job_details, load_job_details
+from backend.services.csv_tracker import (
+    add_job, get_jobs, get_job_by_id,
+    save_job_details, load_job_details, update_job
+)
 from backend.services.llm_client import get_settings
+from backend.routers.tailor import run_tailor_endpoint
 
 router = APIRouter(prefix="/api/scout", tags=["scout"])
 
@@ -49,8 +55,49 @@ def _parse_candidate_profile(filepath: Path) -> dict:
         "preferences": " | ".join(profile["preferences"])
     }
 
+async def _process_jobs_bg(new_jobs: list[dict], profile: dict, threshold: int):
+    semaphore = asyncio.Semaphore(3)
+
+    async def process_single_job(job):
+        async with semaphore:
+            try:
+                # Scrape JD
+                jd_text = await scrape_full_jd(job['apply_link'])
+                if jd_text:
+                    job['description'] = jd_text
+                    save_job_details(job)
+                else:
+                    print(f"Scraping returned no text for {job['job_id']}")
+                    job['status'] = "rejected"
+                    update_job(job["job_id"], status="rejected", score=0, reason="Scrape failed")
+                    return
+
+                # Score Job
+                score, reason = score_job(job, profile)
+                job["score"] = score
+                job["reason"] = reason
+                
+                if score >= threshold:
+                    job["status"] = "shortlisted"
+                    update_job(job["job_id"], status="shortlisted", score=score, reason=reason)
+                    save_job_details(job)
+                    try:
+                        run_tailor_endpoint(job["job_id"])
+                    except Exception as e:
+                        print(f"Error running tailor for job {job['job_id']}: {e}")
+                else:
+                    job["status"] = "rejected"
+                    update_job(job["job_id"], status="rejected", score=score, reason=reason)
+                    save_job_details(job)
+            except Exception as e:
+                print(f"Error processing job in bg: {e}")
+                job['status'] = "rejected"
+                update_job(job["job_id"], status="rejected", score=0, reason=f"Error processing: {e}")
+
+    await asyncio.gather(*[process_single_job(job) for job in new_jobs])
+
 @router.post("/run")
-def run_scout():
+def run_scout(background_tasks: BackgroundTasks):
     settings = get_settings()
     job_types = settings.get("job_types", ["internship"])
     threshold = int(settings.get("score_threshold", 6))
@@ -64,13 +111,13 @@ def run_scout():
     
     summary = {
         "found": len(raw_jobs),
-        "shortlisted": 0,
-        "skipped": 0,
+        "shortlisted": "Processing in background",
+        "skipped": "Processing in background",
         "new": 0,
         "duplicate": 0
     }
     
-    processed_jobs = []
+    new_jobs = []
     
     # 4. For each job
     for job in raw_jobs:
@@ -84,32 +131,18 @@ def run_scout():
             
         summary["new"] += 1
         
-        # b. Score job
-        score, reason = score_job(job, profile)
-        job["score"] = score
-        job["reason"] = reason
-        
-        # c. Set status
-        if score >= threshold:
-            job["status"] = "shortlisted"
-            summary["shortlisted"] += 1
-        else:
-            job["status"] = "skipped"
-            summary["skipped"] += 1
-            
-        # d. Save local details (which includes full description)
+        # Save initially as found
+        job["status"] = "found"
+        job["score"] = 0
+        job["reason"] = ""
+        add_job(job)
         save_job_details(job)
-        
-        # We don't want to push full description to Notion API, it's too long
-        # But we want to keep it in our response for processed_jobs, or pop it before Notion
-        # get_job_by_id handles it by only caring about what we feed it
-        notion_id = add_job(job)
-        if notion_id:
-            job["notion_id"] = notion_id
+        new_jobs.append(job)
             
-        processed_jobs.append(job)
+    if new_jobs:
+        background_tasks.add_task(_process_jobs_bg, new_jobs, profile, threshold)
         
-    summary["jobs_processed"] = processed_jobs
+    summary["message"] = f"Triggered background scoring for {len(new_jobs)} new jobs."
     return summary
 
 @router.get("/jobs")

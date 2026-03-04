@@ -9,13 +9,30 @@
 	],
 	"ollama_base_url": "http://localhost:11434/v1",
 	"groq_api_key": "",
-	"notion_api_key": "",
-	"notion_database_id": "",
+	"csv_path": "tracked_jobs.csv",
 	"job_types": [
+		"software",
+		"intern",
 		"internship"
 	],
-	"score_threshold": 6,
-	"search_delay_seconds": 5,
+	"_visa_status_options": "Valid values: 'requires_sponsorship' (only Yes/Offers), 'prefer_sponsorship' (all jobs, sponsored get +2), 'no_preference' (all jobs, no change)",
+	"visa_status": "prefer_sponsorship",
+	"hours_old": 168,
+	"blocked_categories": [
+		"Quantitative Finance",
+		"Quant",
+		"Finance",
+		"Accounting",
+		"Legal",
+		"Marketing",
+		"Sales",
+		"Medical",
+		"Clinical",
+		"Hardware",
+		"Mechanical Engineering",
+		"Civil Engineering",
+		"Electrical Engineering"
+	],
 	"blocked_companies": [
 		"Lensa",
 		"Wiraa",
@@ -32,5 +49,8 @@
 		"Staffing",
 		"Recruitment",
 		"Resource Group"
-	]
+	],
+	"system": {
+		"score_threshold": 6
+	}
 }

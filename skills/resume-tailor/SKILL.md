@@ -124,8 +124,8 @@ outputs/
     └── ...
 ```
 
-## Script
-Run: `scripts/resume_tailor.py --job_id <id>`
+## API Integration
+Endpoint: `POST /api/tailor/resume` or `backend/services/resume_tailor.py`
 
 ## Compilation Requirements
 - `pdflatex` must be installed (`apt install texlive-full` or use Overleaf export)

@@ -1,9 +1,12 @@
-import os
+import asyncio
 from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.services.profile_rag import fill_field
+from backend.services.profile_rag import batch_fill_fields
+from backend.services.resume_manager import evaluate_and_fetch_resume
+from backend.services.csv_tracker import add_job
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 PROFILE_DIR = Path(__file__).parent.parent.parent / "profile"
@@ -15,6 +18,7 @@ class FillRequest(BaseModel):
     fields: list[str]
     job_url: str = ""
     company: str = ""
+    job_description: str = ""
 
 @router.get("")
 def get_all_profiles():
@@ -25,6 +29,69 @@ def get_all_profiles():
     for f in PROFILE_DIR.glob("*.md"):
         results[f.name] = f.read_text(encoding="utf-8")
     return results
+
+@router.post("/fill")
+async def fill_application_fields(req: FillRequest):
+    """Bridge for the browser extension to autofill forms via Profile RAG.
+    Uses a single batched LLM call for all fields."""
+    result = await asyncio.to_thread(
+        batch_fill_fields,
+        fields=req.fields,
+        job_url=req.job_url,
+        company=req.company,
+    )
+
+    # If job description is present, also fetch the resume (scored/tailored)
+    if req.job_description:
+        print(f"JD found. Triggering resume evaluation...")
+        resume_data = evaluate_and_fetch_resume(req.job_description)
+        result["resume_automation"] = resume_data
+
+    return result
+
+class CompleteRequest(BaseModel):
+    job_url: str
+    company: str
+    is_generated: bool = False
+    generated_resume_path: str = ""
+
+@router.post("/application_complete")
+def application_complete(req: CompleteRequest):
+    """Cleanup tailored files and track job in CSV."""
+    import os
+    from datetime import datetime
+
+    print(f"Application complete for {req.company}")
+    
+    # 1. Track in CSV
+    job_data = {
+        "job_id": f"job_{int(datetime.now().timestamp())}",
+        "company": req.company,
+        "title": "Applied Role",
+        "apply_link": req.job_url,
+        "status": "applied",
+        "applied_date": datetime.now().isoformat(),
+        "resume_path": req.generated_resume_path or "references/base_resume.pdf"
+    }
+    add_job(job_data)
+
+    # 2. Cleanup temp resume
+    if req.is_generated and req.generated_resume_path:
+        path = Path(req.generated_resume_path)
+        if path.exists():
+            try:
+                # We often have the whole folder created by run_tailor
+                # But for now we'll just delete the file specified or the parent folder
+                parent = path.parent
+                if "applications" in str(parent):
+                    # For safety, only remove if in outputs/applications
+                    import shutil
+                    shutil.rmtree(parent)
+                    print(f"Cleaned up tailored resume folder: {parent}")
+            except Exception as e:
+                print(f"Error cleaning up temp files: {e}")
+
+    return {"status": "success", "message": "Job tracked and cleanup complete"}
 
 @router.post("/{filename}")
 def update_profile(filename: str, payload: ProfileUpdate):
@@ -38,15 +105,3 @@ def update_profile(filename: str, payload: ProfileUpdate):
         
     path.write_text(payload.content, encoding="utf-8")
     return {"status": "success", "filename": filename}
-
-@router.post("/fill")
-def fill_application_fields(req: FillRequest):
-    """Bridge for the browser extension to autofill forms via Profile RAG."""
-    results = {}
-    job_context = f"{req.company} - {req.job_url}"
-    
-    for field in req.fields:
-        val = fill_field(field_name=field, field_context="", job_context=job_context)
-        results[field] = val
-        
-    return results

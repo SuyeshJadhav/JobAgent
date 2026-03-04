@@ -56,8 +56,8 @@ Like a robot intern — clicks buttons, fills forms, uploads files.
 - Max 10 applications per run (safety limit)
 - Rotate between portals if possible
 
-## Script
-Run: `scripts/auto_apply.py --confirm`
+## Extention Integration
+Trigger Autofill from Chrome Extension which posts to `POST /api/profile/fill`
 
 ## Setup Required
 - LinkedIn session cookies saved to `config/linkedin_cookies.json`

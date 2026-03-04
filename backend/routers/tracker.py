@@ -1,5 +1,9 @@
-from fastapi import APIRouter
-from backend.services.local_tracker import get_jobs, update_status
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse
+from backend.services.csv_tracker import (
+    get_jobs, get_job_by_id, 
+    update_job, get_stats, CSV_PATH
+)
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/tracker", tags=["tracker"])
@@ -10,14 +14,27 @@ class StatusUpdate(BaseModel):
 
 @router.get("/stats")
 def get_tracker_stats():
-    jobs = get_jobs(status=None)
-    stats = {}
-    for job in jobs:
-        st = job.get("status", "unknown")
-        stats[st] = stats.get(st, 0) + 1
-    return stats
+    return get_stats()
+
+@router.get("/jobs")
+def get_tracker_jobs(status: str = None):
+    return get_jobs(status=status)
 
 @router.patch("/{job_id}/status")
-def patch_job_status(job_id: str, payload: StatusUpdate):
-    update_status(job_id, payload.status, notes=payload.notes)
-    return {"status": "success", "job_id": job_id, "new_status": payload.status}
+def patch_job_status(job_id: str, body: dict):
+    # Using dict for body to allow arbitrary fields as requested in update_job(**body)
+    success = update_job(job_id, **body)
+    if not success:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return {"updated": True}
+
+@router.get("/export")
+def export_csv():
+    if not CSV_PATH.exists():
+        raise HTTPException(status_code=404, detail="CSV file not found")
+        
+    return FileResponse(
+        path=CSV_PATH,
+        media_type="text/csv",
+        filename="tracked_jobs.csv"
+    )

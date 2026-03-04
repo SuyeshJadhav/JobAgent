@@ -64,8 +64,8 @@ outputs/
     └── ...
 ```
 
-## Script
-Run: `scripts/cover_letter.py --job_id <id>`
+## API Integration
+Endpoint: `POST /api/tailor/cover_letter` or run `backend/services/cover_letter.py`
 
 ## Rules
 - Max 250 words

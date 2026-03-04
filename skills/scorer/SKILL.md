@@ -57,8 +57,8 @@ Reply ONLY as JSON: {"score": <n>, "reason": "<one sentence>"}
 ## Threshold
 Default: `SCORE_THRESHOLD = 6` (configurable in candidate_profile.md)
 
-## Script
-Run: `scripts/scout_agent.py` (scorer is integrated)
+## API Integration
+Run: `backend/services/scorer.py` or trigger through `POST /api/scout/run`
 
 ## Rules
 - Score based on role fit only — ignore resume

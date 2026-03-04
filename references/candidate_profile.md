@@ -1,5 +1,9 @@
 # Candidate Profile
 
+## Visa Status
+Status: requires_sponsorship
+Note: F-1 student, requires OPT/CPT or H1B sponsor
+
 ## Background
 - Degree: Master of Computer Science (MCS), currently enrolled
 - Experience: Full Stack Development, Distributed Systems, AI Agents, LLM pipelines, Machine Learning, Software Engineering

@@ -59,32 +59,17 @@ Target Roles (user-defined)
 ```
 Run with: `python pipeline.py --full`
 
-### Mode 2 — Standalone (each module runs independently)
+### Mode 2 — Standalone (via FastAPI endpoints or services)
 ```
-python scripts/scout_agent.py                      ← just find jobs
-python scripts/resume_tailor.py --job_id 123       ← just tailor one resume
-python scripts/cover_letter.py --job_id 123        ← just one cover letter
-python scripts/auto_apply.py --job_id 123          ← just apply to one job
-python scripts/tracker.py --show                   ← just show tracker
-python scripts/interview_agent.py                  ← populate context bank
+- Scout Jobs:            POST /api/scout/run
+- Tailor Resume:         POST /api/tailor/resume
+- Generate Cover Letter: POST /api/tailor/cover_letter
+- View Tracker Stats:    GET /api/tracker/stats
+- Autofill Application:  POST /api/profile/fill
 ```
 
-### Standalone Design Rule — Non-Negotiable
-Every script MUST expose a `run()` function so pipeline.py can import it:
-```python
-# Every script must follow this pattern exactly:
-
-def run(job_id=None, **kwargs):
-    """Core logic here — works both standalone and when imported"""
-    pass
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--job_id", type=str)
-    args = parser.parse_args()
-    run(job_id=args.job_id)
-```
+### Standalone Design Rule
+The backend is structured into `routers` and `services`. Ensure any new skills are implemented as stateless API endpoints or modular services.
 
 ---
 
@@ -104,17 +89,14 @@ Always load in this order before executing any task:
 
 ## When to Use Each Skill
 
-| User says... | Read this SKILL.md | Run this script |
+| User says... | Read this SKILL.md | Primary Router / Service |
 |---|---|---|
-| "find jobs", "scout today" | `skills/scout/SKILL.md` | `scout_agent.py` |
-| "score this JD", "good fit?" | `skills/scorer/SKILL.md` | `scout_agent.py` (integrated) |
-| "tailor my resume" | `skills/resume-tailor/SKILL.md` | `resume_tailor.py` |
-| "write cover letter" | `skills/cover-letter/SKILL.md` | `cover_letter.py` |
-| "apply to jobs" | `skills/auto-apply/SKILL.md` | `auto_apply.py` |
-| "show applications" | `skills/tracker/SKILL.md` | `tracker.py` |
-| "add project to context bank" | — | `interview_agent.py` |
-| "run full pipeline" | All SKILL.md files | `pipeline.py --full` |
-| "run from tailor onwards" | tailor + cover + apply + tracker | `pipeline.py --from tailor` |
+| "find jobs", "scout today" | `skills/scout/SKILL.md` | `backend/routers/scout.py` / `job_sources.py` |
+| "score this JD", "good fit?" | `skills/scorer/SKILL.md` | `backend/services/scorer.py` |
+| "tailor my resume" | `skills/resume-tailor/SKILL.md` | `backend/routers/tailor.py` / `resume_tailor.py` |
+| "write cover letter" | `skills/cover-letter/SKILL.md` | `backend/routers/tailor.py` / `cover_letter.py` |
+| "apply to jobs" | `skills/auto-apply/SKILL.md` | `backend/routers/apply.py` (Chrome Extension) |
+| "show applications" | `skills/tracker/SKILL.md` | `backend/routers/tracker.py` / `csv_tracker.py` |
 
 ---
 
@@ -136,43 +118,24 @@ job-application-agent/
 │   ├── cover-letter/SKILL.md
 │   ├── auto-apply/SKILL.md
 │   └── tracker/SKILL.md
-├── scripts/                           ← built scripts go here
-│   ├── scout_agent.py                 ✅ done
-│   ├── interview_agent.py             ✅ done
-│   ├── resume_tailor.py               ← build next
-│   ├── cover_letter.py                ← after tailor
-│   ├── auto_apply.py                  ← after cover letter
-│   ├── tracker.py                     ← after auto_apply
-│   └── pipeline.py                    ← build last
+├── backend/                           ← Python FastAPI backend
+│   ├── main.py                        ← API Entry point
+│   ├── routers/                       ← FastAPI routes
+│   └── services/                      ← Core business logic
+├── extension/                         ← Chrome extension for autofill
 ├── outputs/
 │   ├── resumes/                       ← tailored .tex + .pdf per job
 │   └── cover_letters/                 ← cover letters per job
-└── scout_jobs.db                      ← SQLite database (single source of truth)
+└── tracked_jobs.csv                   ← CSV Database (single source of truth)
 ```
 
 ---
 
 ## Database — Single Source of Truth
 
-All modules read/write to `scout_jobs.db`. Schema:
-```sql
-CREATE TABLE jobs (
-  job_id            TEXT PRIMARY KEY,
-  title             TEXT,
-  company           TEXT,
-  location          TEXT,
-  apply_link        TEXT,
-  description       TEXT,
-  score             INTEGER,
-  reason            TEXT,
-  found_at          TEXT,
-  applied_at        TEXT,
-  status            TEXT,
-  resume_path       TEXT,
-  cover_letter_path TEXT,
-  notes             TEXT,
-  last_updated      TEXT
-)
+All modules read/write to `tracked_jobs.csv`. Expected Columns:
+```csv
+job_id, title, company, location, apply_link, description, score, reason, found_at, applied_at, status, resume_path, cover_letter_path, notes, last_updated
 ```
 
 Status lifecycle:

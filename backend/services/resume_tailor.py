@@ -3,6 +3,7 @@ import re
 import shutil
 import subprocess
 import tomllib
+import pypdf
 from datetime import datetime
 from pathlib import Path
 
@@ -109,38 +110,101 @@ def extract_jd_keywords(jd_text: str) -> dict:
     except Exception:
         return {"required_skills": [], "action_verbs": [], "seniority_signals": [], "domain_focus": []}
 
-def rewrite_bullets(section_name: str, current_text: str, keywords: dict, context_bank: dict) -> str:
+def extract_numbers(text: str) -> set:
+    return set(re.findall(r'\b\d+(?:\.\d+)?\b', text))
+
+class HallucinationError(Exception):
+    pass
+
+def rewrite_bullets(section_name: str, current_text: str, keywords: dict, context_bank: dict, is_retry: bool = False) -> str:
     context_notes = _get_context_for_section(section_name, context_bank)
-    voice = _get_voice_samples(context_bank)
     kw_str = json.dumps(keywords, indent=2)
 
-    system = (
-        "You are editing LaTeX resume bullet points for a specific job.\n\n"
-        f"JD KEYWORDS:\n{kw_str}\n\n"
-        "Rules:\n"
-        "- Rewrite bullets to use JD verbs and keywords natively\n"
-        "- Never add tools/experience not in original\n"
-        "- Never modify LaTeX commands, just the text\n"
-        "- Return ONLY the rewritten bullet lines with LaTeX commands kept exactly\n"
-        "- Add metrics where provided\n"
-    )
+    system = """You are a resume editor. Your ONLY job is 
+to rephrase existing bullet points to match job keywords.
 
-    if context_notes:
-        system += f"\nREAL CONTEXT (use these exact details):\n{context_notes}\n"
-    if voice:
-        system += f"\nCANDIDATE VOICE:\n{voice}\n"
+<strict_rules>
+WHAT YOU MUST DO:
+- Keep every \\resumeItem{} wrapper exactly as-is
+- Keep every \\imp{} wrapper exactly as-is  
+- Keep ALL numbers exactly as they appear in original
+- Keep ALL tool names exactly as they appear in original
+- Only change non-metric words to match JD keywords
+- Return ONLY \\resumeItem{} lines, nothing else
+- Each bullet must be under 95 characters of text content
+- Maximum 2 lines per bullet when rendered
 
-    user_msg = (
-        f"SECTION: {section_name}\n\n"
-        f"CURRENT BULLETS:\n{current_text}\n\n"
-        "Rewrite bullets safely."
-    )
+WHAT YOU MUST NEVER DO:
+- Never add tools, skills, or experience not in original
+- Never invent numbers or metrics
+- Never add sections, headers, or \\textbf{} blocks
+- Never use: spearheaded, passionate, innovative,
+  leveraged, synergy, cutting-edge, dynamic,
+  collaborated, assisted, helped, worked with
+- Never start two bullets with the same verb
+- Never output anything except \\resumeItem{} lines
+</strict_rules>
+
+<output_format>
+Return ONLY this format, one per line:
+\\resumeItem{Verb + what + how/tool + metric}
+
+Example:
+\\resumeItem{Built \\imp{RAG pipeline} using \\imp{LangChain}, reducing query latency from \\imp{5min → 30sec} across 50k daily requests.}
+</output_format>"""
+
+    if is_retry:
+        system += "\nSTRICT WARNING: In your previous attempt, you hallucinated a number or violated the rules. Pay extremely close attention to the rules and use ONLY numbers present in the real context!"
+
+    user_msg = f"""SECTION: {section_name}
+
+JD KEYWORDS TO INCORPORATE:
+{kw_str}
+
+REAL CONTEXT (use ONLY these details, no invention):
+{context_notes}
+
+ORIGINAL BULLETS (rephrase these, keep all numbers/tools):
+{current_text}
+
+Return ONLY the rewritten \\resumeItem{{}} lines."""
 
     client = get_llm_client()
     resp = client.chat.completions.create(
         model=get_model_name(),
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
         temperature=0.7
+    )
+    return resp.choices[0].message.content.strip()
+
+def rewrite_bullets_with_validation(section_name: str, current_text: str, keywords: dict, context_bank: dict) -> str:
+    context_notes = _get_context_for_section(section_name, context_bank)
+    true_numbers = extract_numbers(context_notes) if context_notes else set()
+    true_numbers.update(extract_numbers(current_text))
+    
+    for attempt in range(2):
+        is_retry = attempt > 0
+        output = rewrite_bullets(section_name, current_text, keywords, context_bank, is_retry)
+        output_numbers = extract_numbers(output)
+        
+        hallucinated = output_numbers - true_numbers
+        if hallucinated:
+            print(f"REJECTED: LLM invented number(s) {hallucinated} in section '{section_name}'")
+            if attempt == 0:
+                continue
+            else:
+                return current_text
+        return output
+    return current_text
+
+def trim_bullets(current_text: str) -> str:
+    system = "You are an expert LaTeX resume editor. The current resume overflows to 2 pages. Trim each bullet point by exactly 1 line of length, keeping the LaTeX macros perfectly intact. DO NOT change the numbers."
+    user_msg = f"CURRENT BULLETS:\n{current_text}\n\nTrim the text."
+    client = get_llm_client()
+    resp = client.chat.completions.create(
+        model=get_model_name(),
+        messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
+        temperature=0.3
     )
     return resp.choices[0].message.content.strip()
 
@@ -193,40 +257,87 @@ def run_tailor(job: dict) -> dict:
     keywords = extract_jd_keywords(desc)
 
     # 2. Rewrite
+    SKIP_SECTIONS = {"HEADER", "SUMMARY", "EDUCATION"}
     rewritten = {}
     for section_name, sec_data in sections.items():
-        if section_name.upper() in ("SUMMARY", "SKILLS") or any(k.lower() in section_name.lower() for k in keywords.get("domain_focus", [])):
-            print(f"Tailoring section: {section_name}")
-            new_text = rewrite_bullets(section_name, sec_data["content"], keywords, refs["context_bank"])
-            rewritten[section_name] = new_text
+        sec_upper = section_name.upper()
+        if any(skip in sec_upper for skip in SKIP_SECTIONS):
+            rewritten[section_name] = sec_data["content"]
+            continue
 
-    # 3. Assemble and save tex
+        is_relevant = False
+        if "PROJECTS" in sec_upper or "EXPERIENCE" in sec_upper:
+            is_relevant = True
+        elif "SKILLS" in sec_upper or any(k.lower() in sec_upper.lower() for k in keywords.get("domain_focus", [])):
+            is_relevant = True
+
+        if is_relevant:
+            print(f"Tailoring section: {section_name}")
+            new_text = rewrite_bullets_with_validation(section_name, sec_data["content"], keywords, refs["context_bank"])
+            rewritten[section_name] = new_text
+        else:
+            rewritten[section_name] = sec_data["content"]
+
+    # 3. Compile helper and checker
+    def compile_pdf(t_dir, s_name, t_path):
+        return subprocess.run(
+            ["pdflatex", f"-jobname={s_name}", "-interaction=nonstopmode", "-output-directory", str(t_dir), str(t_path)],
+            capture_output=True, text=True, timeout=60
+        )
+        
+    def get_page_count(p_path):
+        try:
+            with open(p_path, "rb") as f:
+                reader = pypdf.PdfReader(f)
+                return len(reader.pages)
+        except Exception:
+            return 0
+
+    # Assemble Base
     tailored_tex = assemble_tailored_tex(refs["base_resume_tex"], sections, rewritten)
     tex_path = target_dir / "resume.tex"
     tex_path.write_text(tailored_tex, encoding="utf-8")
 
-    # Move dependencies
     if CUSTOM_COMMANDS.exists():
         shutil.copy(CUSTOM_COMMANDS, target_dir / "custom-commands.tex")
 
-    # Compile PDF
+    # Compile Base
     pdf_path = target_dir / f"{safe_name}.pdf"
-    
     try:
-        pid = subprocess.run(
-            [
-                "pdflatex",
-                f"-jobname={safe_name}",
-                "-interaction=nonstopmode",
-                "-output-directory", str(target_dir),
-                str(tex_path)
-            ],
-            capture_output=True, text=True, timeout=60
-        )
-        if pdf_path.exists():
-            return {"status": "success", "output_dir": str(target_dir), "pdf_path": str(pdf_path)}
-        else:
+        pid = compile_pdf(target_dir, safe_name, tex_path)
+        if not pdf_path.exists():
             return {"status": "error", "error": f"PDF compilation failed: {pid.stdout[-500:]}"}
+            
+        pages = get_page_count(pdf_path)
+        if pages == 1:
+            return {"status": "success", "output_dir": str(target_dir), "pdf_path": str(pdf_path)}
+            
+        # Pages == 2 (or more)
+        print("Pages > 1. Attempt 1: Trimming bullets...")
+        trimmed_rewritten = {}
+        for sec, text in rewritten.items():
+            if sec.upper() not in ("SUMMARY", "SKILLS"):
+                trimmed_rewritten[sec] = trim_bullets(text)
+            else:
+                trimmed_rewritten[sec] = text
+        
+        tailored_tex_trimmed = assemble_tailored_tex(refs["base_resume_tex"], sections, trimmed_rewritten)
+        tex_path.write_text(tailored_tex_trimmed, encoding="utf-8")
+        compile_pdf(target_dir, safe_name, tex_path)
+        if pdf_path.exists() and get_page_count(pdf_path) == 1:
+            return {"status": "success", "output_dir": str(target_dir), "pdf_path": str(pdf_path)}
+            
+        print("Pages > 1. Attempt 2: LaTeX compression...")
+        compressed_tex = tailored_tex_trimmed.replace(r"\setlength{\itemsep}{1pt}", r"\setlength{\itemsep}{0pt}")
+        compressed_tex = compressed_tex.replace(r"10pt", r"9.5pt")
+        tex_path.write_text(compressed_tex, encoding="utf-8")
+        compile_pdf(target_dir, safe_name, tex_path)
+        if pdf_path.exists() and get_page_count(pdf_path) == 1:
+            return {"status": "success", "output_dir": str(target_dir), "pdf_path": str(pdf_path)}
+            
+        print("Resume is 2 pages. Manual review needed.")
+        return {"status": "warning", "warning": "Resume is 2 pages. Manual review needed.", "output_dir": str(target_dir), "pdf_path": str(pdf_path)}
+            
     except FileNotFoundError:
         return {"status": "error", "error": "pdflatex is not installed"}
     except Exception as e:

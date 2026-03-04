@@ -1,6 +1,9 @@
-import json
 import re
+
 from backend.services.llm_client import get_llm_client, get_model_name, get_settings
+
+AUTO_SHORTLIST = 0.35   # was 0.45
+AUTO_SKIP = 0.25        # was 0.20
 
 def parse_llm_response(content: str) -> tuple[int, str]:
     """Parse the LLM response to ensure we always get a valid int score and string reason."""
@@ -33,15 +36,12 @@ def parse_llm_response(content: str) -> tuple[int, str]:
         return 1, "Failed to parse reasoning from LLM."
 
 
-def score_job(job: dict, profile: dict) -> tuple[int, str]:
-    """
-    Score a job using an LLM call based on the job details and Candidate's profile.
-    Returns (score: int, reason: str)
-    """
+def _llm_score(job: dict, profile: dict) -> tuple[int, str]:
+    """Call LLM to score the job match."""
     client = get_llm_client()
     model_name = get_model_name()
     
-    # We combine relevant info from the profile into a readable format for the LLM
+    # Combined profile info
     profile_summary = f"""
 Candidate Target Roles: {profile.get('target_roles', 'Not specified')}
 Candidate Key Skills: {profile.get('skills', 'Not specified')}
@@ -50,45 +50,71 @@ Candidate Preferences: {profile.get('preferences', 'Not specified')}
 """
 
     job_description_snippet = job.get('description', '')
-    # Truncate description if extremely long so we don't blow token counts
     if len(job_description_snippet) > 10000:
         job_description_snippet = job_description_snippet[:10000]
 
     job_summary = f"""
 Company: {job.get('company')}
 Job Title: {job.get('title')}
-Description Limit snippet: {job_description_snippet}
+Description: {job_description_snippet}
 """
 
+    system = """You are a resume-job fit evaluator.
+Score this internship/new grad job from 1-10 for
+this specific candidate.
+
+SCORING RULES:
+
+STEP 1 — Company domain check (apply FIRST):
+  Quant trading / hedge fund (Two Sigma, DE Shaw,
+  Jane Street, Citadel, Tower Research, SIG):
+    → max score 4, even if they use ML/Python
+  Legal tech company:
+    → max score 3
+  Finance/banking (Goldman, JPMorgan, etc):
+    → max score 4 unless explicitly software team
+  Non-tech company (retail, food, healthcare):
+    → max score 5
+  Pure software / AI / ML company:
+    → score normally, no cap
+
+STEP 2 — Role level check:
+  Requires 3+ years experience → score 1
+  Requires specific hardware/embedded skills
+  candidate doesn't have → score 2
+  Clearly intern/new grad level → continue
+
+STEP 3 — Skills match check:
+  Strong match (LLM/RAG/Python/FastAPI/React) → 8-10
+  Partial match (some overlap) → 5-7
+  Weak match (different domain) → 3-4
+  No match → 1-2
+
+SCORING SCALE:
+  9-10: Perfect fit — AI/ML/SWE intern at tech company,
+        strong skills overlap
+  7-8:  Good fit — SWE intern, decent skills overlap
+  5-6:  Borderline — some overlap, worth applying
+  3-4:  Poor fit — wrong domain or weak skills match
+  1-2:  Skip — quant/finance/wrong level/no match
+
+Return EXACTLY in this format (no other text):
+Score: X
+Reason: one sentence explanation"""
+
     prompt = f"""
-You are an expert technical recruiter AI evaluating how well a job posting matches a candidate's profile.
-Please score the job fit from 1 to 10 based on these criteria:
-* Role title match: Is this the right type of role?
-* Seniority match: Does this match their expected level (e.g., intern/new grad)?
-* Skills overlap: How many required skills from the Job Description does the candidate possess?
-* Domain match: Is it aligned with AI/ML/SWE?
-* Red flags: Are there major red flags (e.g. requires 5+ years of experience for an intern role, completely unrelated domain)?
-
-Score strictly (1 = terrible fit or major red flag, 10 = perfect fit). 
-If it is obviously a senior level job but the candidate is entry level, give a very low score (e.g., 1-3).
-If the domain has NO correlation to the candidate's target roles, give a very low score.
-
-Here is the Candidate Profile:
+Candidate Profile:
 {profile_summary}
 
-Here is the Job:
+Job Details:
 {job_summary}
-
-You MUST reply in exactly the following format:
-Score: [number from 1 to 10]
-Reason: [A 1-2 sentence explanation of why you gave this score]
 """
 
     try:
         response = client.chat.completions.create(
             model=model_name,
             messages=[
-                {"role": "system", "content": "You are a precise and critical job-matching AI."},
+                {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.0,
@@ -97,8 +123,39 @@ Reason: [A 1-2 sentence explanation of why you gave this score]
         content = response.choices[0].message.content
         return parse_llm_response(content)
     except Exception as e:
-        print(f"LLM request error during job scoring: {e}")
+        print(f"LLM request error: {e}")
         return 0, f"Error calling LLM: {str(e)}"
+
+
+def score_job(job: dict, profile: dict) -> tuple[int, str]:
+    """
+    Score a job using local heuristics then an LLM call.
+    Returns (score: int, reason: str)
+    """
+    # Placeholder for keyword match stage (if any)
+    # (Actually we'll just implement the pre-check here as requested)
+
+    QUANT_FIRMS = {
+        "two sigma", "de shaw", "jane street",
+        "citadel", "tower research", "sig",
+        "virtu", "akuna", "optiver", "imc",
+        "hudson river trading", "jump trading",
+        "renaissance", "millenium", "point72"
+    }
+    
+    company_lower = job.get("company","").lower()
+    
+    if any(firm in company_lower 
+           for firm in QUANT_FIRMS):
+        return 3, "QUANT_FIRM: Score capped at 3"
+
+    score, reason = _llm_score(job, profile)
+
+    if job.get("is_sponsored") and get_settings().get("visa_status") == "prefer_sponsorship":
+        score = min(10, score + 2)
+        reason = "[SPONSORED] " + reason
+        
+    return score, reason
 
 # A quick helper block for local testing
 if __name__ == "__main__":

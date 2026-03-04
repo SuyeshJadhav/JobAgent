@@ -13,26 +13,10 @@ gets logged here — from found to applied to offer.
 
 ---
 
-## Database Schema (SQLite)
+## Database Format (CSV)
 
-```sql
-CREATE TABLE jobs (
-  job_id        TEXT PRIMARY KEY,
-  title         TEXT,
-  company       TEXT,
-  location      TEXT,
-  apply_link    TEXT,
-  description   TEXT,
-  score         INTEGER,
-  reason        TEXT,
-  found_at      TEXT,
-  applied_at    TEXT,
-  status        TEXT,        -- see statuses below
-  resume_path   TEXT,        -- path to tailored resume
-  cover_letter_path TEXT,
-  notes         TEXT,
-  last_updated  TEXT
-)
+```csv
+job_id, title, company, location, apply_link, description, score, reason, found_at, applied_at, status, resume_path, cover_letter_path, notes, last_updated
 ```
 
 ## Job Statuses (lifecycle)
@@ -60,8 +44,8 @@ found → shortlisted → resume_ready → cover_ready → applied → [intervie
 - Sync runs after each apply batch
 - Env var: `GOOGLE_SHEETS_ID`, `GOOGLE_CREDS_PATH`
 
-## Script
-Run: `scripts/tracker.py --show` or `--sync`
+## API Integration
+Endpoint: `GET /api/tracker/stats` or `backend/services/csv_tracker.py`
 
 ## Rules
 - Every pipeline action must update the tracker
