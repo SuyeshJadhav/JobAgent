@@ -1,825 +1,664 @@
-// ─── Inject the floating autofill button ─────────────────────────────────
+// ─── extension/content.js — Floating Action Menu + SPA-Safe + State Persistent ──
+// §1: Utility Helpers
+// §2: Inline Suggestion UI (decorates textareas in-place — NOT moved to FAM)
+// §3: State Engine (backend truth + chrome.storage.local cache)
+// §4: Floating Action Menu (FAM) — collapsible panel
+// §5: Action Handlers (Track, Tailor, Mark Applied)
+// §6: SPA-Safe MutationObserver + Initialization
+// ─────────────────────────────────────────────────────────────────────────────
 
-function injectAutofillButton() {
-	if (document.getElementById('jobagent-autofill-btn')) return;
+// ═══════════════════════════════════════════════════════════════════════════
+// §1  UTILITY HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
 
-	const btn = document.createElement('button');
-	btn.id = 'jobagent-autofill-btn';
-	btn.textContent = '\u{1FA84} Autofill with JobAgent';
-	Object.assign(btn.style, {
-		position: 'fixed',
-		bottom: '30px',
-		right: '30px',
-		zIndex: '2147483647',
-		fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-		background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-		color: '#ffffff',
-		border: 'none',
-		padding: '16px 24px',
-		borderRadius: '24px',
-		fontSize: '16px',
-		fontWeight: '600',
-		cursor: 'pointer',
-		boxShadow: '0 8px 24px rgba(99, 102, 241, 0.5)',
-		transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-		letterSpacing: '0.3px',
-	});
-
-	btn.addEventListener('mouseenter', () => {
-		btn.style.transform = 'scale(1.05)';
-		btn.style.boxShadow = '0 12px 32px rgba(99, 102, 241, 0.6)';
-	});
-	btn.addEventListener('mouseleave', () => {
-		btn.style.transform = 'scale(1)';
-		btn.style.boxShadow = '0 8px 24px rgba(99, 102, 241, 0.5)';
-	});
-
-	document.body.appendChild(btn);
-
-	btn.addEventListener('click', handleAutofillClick);
-}
-
-window.addEventListener('load', () => {
-	injectAutofillButton();
-	injectSaveJobButton();
-	injectMarkAppliedButton();
-
-	const observer = new MutationObserver(() => {
-		injectAutofillButton();
-		injectSaveJobButton();
-		injectMarkAppliedButton();
-	});
-	observer.observe(document.body, { childList: true, subtree: true });
-});
-
-// ─── Helper: extract a question/label for any element ────────────────────
+const normalizeKey = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 
 function extractQuestion(el) {
 	let question = '';
-
-	// Priority 1: Explicit <label> via "for" attribute
 	if (el.id) {
 		const label = document.querySelector(`label[for="${el.id}"]`);
 		if (label) question = label.textContent.trim();
 	}
-
-	// Priority 2: aria-labelledby or aria-label
 	if (!question && el.getAttribute('aria-labelledby')) {
-		const labelId = el.getAttribute('aria-labelledby');
-		const labelEl = document.getElementById(labelId);
+		const labelEl = document.getElementById(el.getAttribute('aria-labelledby'));
 		if (labelEl) question = labelEl.textContent.trim();
 	}
-
 	if (!question && el.getAttribute('aria-label')) {
 		question = el.getAttribute('aria-label').trim();
 	}
-
-	// Priority 3: Workday specific data-automation-id label matching
 	if (!question && el.hasAttribute('data-automation-id')) {
 		const autoId = el.getAttribute('data-automation-id');
 		const relatedLabel = document.querySelector(`[data-automation-id="label-${autoId}"], [data-automation-id*="${autoId}"] label`);
 		if (relatedLabel) {
 			question = relatedLabel.textContent.trim();
 		} else {
-			// Parse the attribute itself. e.g. "legalNameSection_firstName" -> "First Name"
 			const parts = autoId.split('_');
 			const lastPart = parts[parts.length - 1] || '';
-			question = lastPart.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+			question = lastPart.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase()).trim();
 		}
 	}
-
-	// Priority 4: Placeholder
-	if (!question && el.placeholder) {
-		question = el.placeholder.trim();
-	}
-
-	// Priority 5: Walk up to find nearest standard label or legend
+	if (!question && el.placeholder) question = el.placeholder.trim();
 	if (!question) {
-		const parent = el.closest(
-			'.form-group, .field, fieldset, [class*="field"], [class*="question"]'
-		);
+		const parent = el.closest('.form-group, .field, fieldset, [class*="field"], [class*="question"]');
 		if (parent) {
 			const lbl = parent.querySelector('label, legend, [class*="label"]');
 			if (lbl) question = lbl.textContent.trim();
 		}
 	}
-
-	// Priority 7: Deep Label Search for custom wrapping divs (Workday, Lever, etc.)
 	if (!question) {
-		let current = el.parentElement;
-		while (current && current !== document.body && !question) {
-			if (current.className && typeof current.className === 'string' &&
-				(current.className.includes('css-') || current.className.includes('field') || current.className.includes('container'))) {
-				const lbl = current.querySelector('[class*="label"], [id*="label"], label');
-				if (lbl && lbl !== el && !lbl.contains(el)) {
-					question = lbl.textContent.trim();
-				}
+		let cur = el.parentElement;
+		while (cur && cur !== document.body && !question) {
+			if (cur.className && typeof cur.className === 'string' &&
+				(cur.className.includes('css-') || cur.className.includes('field') || cur.className.includes('container'))) {
+				const lbl = cur.querySelector('[class*="label"], [id*="label"], label');
+				if (lbl && lbl !== el && !lbl.contains(el)) question = lbl.textContent.trim();
 			}
-			current = current.parentElement;
+			cur = cur.parentElement;
 		}
 	}
-
-	// Priority 8: Workday H3 Contextual Traversal
 	if (!question || question.toLowerCase().includes('upload a file')) {
 		const group = el.closest('div[role="group"], [data-automation-id*="formField"], .form-group');
 		if (group) {
 			const h3 = group.querySelector('h3');
 			if (h3) {
-				const sectionTitle = h3.textContent.trim();
-				question = question ? `${sectionTitle} - ${question}` : sectionTitle;
+				const st = h3.textContent.trim();
+				question = question ? `${st} - ${question}` : st;
 			}
 		}
 	}
-
-	// Priority 9: Name attribute as last resort
-	if (!question && el.name) {
-		question = el.name.replace(/[_\-]/g, ' ').trim();
-	}
-
+	if (!question && el.name) question = el.name.replace(/[_\-]/g, ' ').trim();
 	return question;
 }
 
-// ─── Helper: extract an option label specifically for a radio button ───────
-function getRadioLabel(radio) {
-	if (radio.id) {
-		const lbl = document.querySelector(`label[for="${radio.id}"]`);
-		if (lbl) return lbl.textContent.trim();
-	}
-	if (radio.getAttribute('aria-label')) {
-		return radio.getAttribute('aria-label').trim();
-	}
-	return radio.value || '';
-}
-
-// ─── Helper: Normalize strings for robust matching ────────────────────────
-const normalizeKey = (str) => str ? str.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
-
-// ─── Scrape visible form fields (text, select, radio) ────────────────────
-
-function scrapeFormFields() {
-	const fields = [];
-
-	// ── 1. Text inputs & textareas ───────────────────────────────────────
-	const textSelectors = [
-		'input[type="text"]',
-		'input[type="email"]',
-		'input[type="tel"]',
-		'input[type="url"]',
-		'input:not([type])',
-		'textarea',
-		'input[data-automation-id]',
-		'textarea[data-automation-id]',
-		'input[placeholder="Search"]',
-		'input[type="file"]',
-	];
-
-	document.querySelectorAll(textSelectors.join(', ')).forEach((el) => {
-		if (el.offsetParent === null && el.type !== 'hidden') return;
-		if (el.type === 'hidden') return;
-
-		const question = extractQuestion(el);
-		if (question) {
-			fields.push({ type: 'text', element: el, question });
-		}
-	});
-
-	// ── 2. Dropdowns (<select>) ──────────────────────────────────────────
-	document.querySelectorAll('select').forEach((el) => {
-		if (el.offsetParent === null) return;
-
-		let question = extractQuestion(el);
-		if (!question) return;
-
-		// Append available options so the LLM knows the constraints
-		const options = [];
-		for (const opt of el.options) {
-			const text = opt.textContent.trim();
-			// Skip placeholder/empty options like "Select...", "--", ""
-			if (text && !text.startsWith('--') && !text.toLowerCase().startsWith('select')) {
-				options.push(text);
-			}
-		}
-
-		if (options.length > 0) {
-			question += ` (Options: ${options.join(', ')})`;
-		}
-
-		fields.push({ type: 'select', element: el, question });
-	});
-
-	// ── 3. Radio groups (<input type="radio">) ───────────────────────────
-	const radioGroups = new Map(); // name → [radio1, radio2, ...]
-
-	document.querySelectorAll('input[type="radio"]').forEach((radio) => {
-		if (radio.offsetParent === null) return;
-		const groupName = radio.name;
-		if (!groupName) return;
-
-		if (!radioGroups.has(groupName)) {
-			radioGroups.set(groupName, []);
-		}
-		radioGroups.get(groupName).push(radio);
-	});
-
-	radioGroups.forEach((radios, groupName) => {
-		// Find the overarching question
-		let question = '';
-
-		// Try: parent fieldset legend
-		const fieldset = radios[0].closest('fieldset');
-		if (fieldset) {
-			const legend = fieldset.querySelector('legend');
-			if (legend) question = legend.textContent.trim();
-		}
-
-		// Try: parent container label
-		if (!question) {
-			const parent = radios[0].closest(
-				'.form-group, .field, [class*="field"], [class*="question"], [role="group"]'
-			);
-			if (parent) {
-				const lbl = parent.querySelector(
-					'label, legend, [class*="label"], [class*="question"]'
-				);
-				if (lbl && !lbl.querySelector('input')) {
-					question = lbl.textContent.trim();
-				}
-			}
-		}
-
-		// Fallback: use the group name
-		if (!question) {
-			question = groupName.replace(/[_\-]/g, ' ').trim();
-		}
-
-		// Collect radio option labels
-		const optionLabels = radios.map(getRadioLabel).filter(Boolean);
-
-		if (optionLabels.length > 0) {
-			question += ` (Options: ${optionLabels.join(', ')})`;
-		}
-
-		fields.push({
-			type: 'radio',
-			elements: radios,        // array of all radios in the group
-			element: radios[0],      // first element for compatibility
-			question,
-		});
-	});
-
-	// ── 4. "Add" Buttons (Workday specific sections like Websites) ────────
-	document.querySelectorAll('button[data-automation-id="add-button"]').forEach((btn) => {
-		if (btn.offsetParent === null) return;
-
-		// Find context via H3
-		let question = '';
-		const group = btn.closest('div[role="group"], [data-automation-id*="section"], .form-group');
-		if (group) {
-			const h3 = group.querySelector('h3');
-			if (h3) question = h3.textContent.trim();
-		}
-
-		if (!question) question = btn.innerText.trim();
-
-		fields.push({
-			type: 'add_button',
-			element: btn,
-			question: question || 'Add Section'
-		});
-	});
-
-	return fields;
-}
-
-function scrapeJobDescription() {
-	// Try common JD selectors
-	const selectors = [
-		'[data-automation-id="jobPostingDescription"]',
-		'.job-description',
-		'#content',
-		'.description',
-		'[class*="jobDescription"]'
-	];
-	for (const sel of selectors) {
-		const el = document.querySelector(sel);
-		if (el) return el.innerText.trim();
-	}
-	return '';
-}
-
-function injectBase64File(base64Data, fileName, fileInput) {
-	try {
-		const byteCharacters = atob(base64Data);
-		const byteNumbers = new Array(byteCharacters.length);
-		for (let i = 0; i < byteCharacters.length; i++) {
-			byteNumbers[i] = byteCharacters.charCodeAt(i);
-		}
-		const byteArray = new Uint8Array(byteNumbers);
-		const blob = new Blob([byteArray], { type: 'application/pdf' });
-		const file = new File([blob], fileName, { type: 'application/pdf' });
-
-		const dataTransfer = new DataTransfer();
-		dataTransfer.items.add(file);
-		fileInput.files = dataTransfer.files;
-
-		fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-		console.log(`Successfully injected file: ${fileName}`);
-		return true;
-	} catch (e) {
-		console.error('File injection failed:', e);
-		return false;
-	}
-}
-
-const BLOCKLIST = ['name', 'email', 'phone', 'address', 'city', 'state', 'zip', 'title', 'company', 'url', 'linkedin', 'github', 'portfolio', 'salary', 'date'];
-
-function scrapeSniperFields() {
-	const fields = [];
-	const textSelectors = [
-		'input[type="text"]',
-		'textarea',
-		'input:not([type])',
-		'textarea[data-automation-id]',
-		'input[data-automation-id]'
-	];
-
-	document.querySelectorAll(textSelectors.join(', ')).forEach((el) => {
-		if (el.offsetParent === null && el.type !== 'hidden') return;
-		if (el.type === 'hidden' || el.readOnly || el.disabled) return;
-
-		const question = extractQuestion(el);
-		if (!question) return;
-
-		const qLower = question.toLowerCase();
-		const isBlocked = BLOCKLIST.some(block => qLower.includes(block));
-
-		if (!isBlocked) {
-			fields.push({ element: el, question });
-		}
-	});
-
-	return fields;
-}
-
-// ─── Autofill click handler ──────────────────────────────────────────────
-
-async function handleAutofillClick() {
-	const btn = document.getElementById('jobagent-autofill-btn');
-	const originalText = btn.textContent;
-	btn.textContent = '🎯 Sniping answers...';
-	btn.disabled = true;
-
-	const scraped = scrapeSniperFields();
-	if (scraped.length === 0) {
-		btn.textContent = '⚠️ No fields found';
-		setTimeout(() => {
-			btn.textContent = originalText;
-			btn.disabled = false;
-		}, 2000);
-		return;
-	}
-
-	const questionsToAnswer = scraped.map(f => f.question);
-
-	try {
-		const response = await fetch('http://localhost:8000/api/sniper/answer', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				url: window.location.href,
-				questions: questionsToAnswer
-			})
-		});
-
-		if (response.status === 404) {
-			btn.textContent = '❌ Job not found';
-			showManualIdInput(questionsToAnswer, scraped);
-			return;
-		}
-
-		if (!response.ok) throw new Error('Network response was not ok');
-
-		const answers = await response.json();
-
-		let filledCount = 0;
-		const responseKeys = Object.keys(answers);
-
-		scraped.forEach((field) => {
-			const normQuestion = normalizeKey(field.question);
-			const matchingKey = responseKeys.find(k => normalizeKey(k) === normQuestion);
-			const answer = matchingKey ? answers[matchingKey] : null;
-
-			if (!answer || answer === 'Could not generate answer.' || answer.startsWith('Error')) return;
-
-			// Implement the React event dispatcher hack
-			field.element.value = answer;
-			field.element.dispatchEvent(new Event('input', { bubbles: true }));
-			field.element.dispatchEvent(new Event('change', { bubbles: true }));
-
-			filledCount++;
-		});
-
-		if (answers.resume_base64) {
-			const fileInput = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
-			if (fileInput) {
-				const injected = injectBase64File(
-					answers.resume_base64,
-					answers.resume_filename || 'Resume.pdf',
-					fileInput
-				);
-				if (injected) filledCount++;
-			}
-		}
-
-		btn.textContent = '✅ Sniped!';
-
-	} catch (error) {
-		console.error('Sniper error:', error);
-		btn.textContent = '❌ Error';
-	}
-
-	setTimeout(() => {
-		btn.textContent = '\u{1FA84} Autofill with JobAgent';
-		btn.disabled = false;
-	}, 3000);
-}
-
-function showManualIdInput(questionsToAnswer, scraped) {
-	if (document.getElementById('jobagent-manual-id-container')) return;
-
-	const container = document.createElement('div');
-	container.id = 'jobagent-manual-id-container';
-	Object.assign(container.style, {
-		position: 'fixed',
-		bottom: '90px',
-		right: '30px',
-		zIndex: '2147483647',
-		background: '#ffffff',
-		padding: '16px',
-		borderRadius: '12px',
-		boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-		display: 'flex',
-		flexDirection: 'column',
-		gap: '8px',
-		fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif'
-	});
-
-	const label = document.createElement('label');
-	label.textContent = 'Job not found. Enter Job ID manually:';
-	label.style.fontSize = '14px';
-	label.style.fontWeight = '600';
-	label.style.color = '#333';
-
-	const input = document.createElement('input');
-	input.type = 'text';
-	input.placeholder = 'Job ID';
-	input.style.padding = '8px';
-	input.style.border = '1px solid #ccc';
-	input.style.borderRadius = '4px';
-
-	const submitBtn = document.createElement('button');
-	submitBtn.textContent = 'Submit';
-	Object.assign(submitBtn.style, {
-		background: '#6366f1',
-		color: 'white',
-		border: 'none',
-		padding: '8px 12px',
-		borderRadius: '4px',
-		cursor: 'pointer',
-		fontWeight: '600'
-	});
-
-	submitBtn.addEventListener('click', async () => {
-		const jobId = input.value.trim();
-		if (jobId) {
-			container.remove();
-			await executeSniperWithPayload({ job_id: jobId, questions: questionsToAnswer }, scraped);
-		}
-	});
-
-	container.appendChild(label);
-	container.appendChild(input);
-	container.appendChild(submitBtn);
-	document.body.appendChild(container);
-}
-
-async function executeSniperWithPayload(payload, scraped) {
-	const btn = document.getElementById('jobagent-autofill-btn');
-	const originalText = btn.textContent;
-	btn.textContent = '🎯 Sniping answers...';
-	btn.disabled = true;
-
-	try {
-		const response = await fetch('http://localhost:8000/api/sniper/answer', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(payload)
-		});
-
-		if (!response.ok) throw new Error('Network response was not ok');
-
-		const answers = await response.json();
-
-		let filledCount = 0;
-		const responseKeys = Object.keys(answers);
-
-		scraped.forEach((field) => {
-			const normQuestion = normalizeKey(field.question);
-			const matchingKey = responseKeys.find(k => normalizeKey(k) === normQuestion);
-			const answer = matchingKey ? answers[matchingKey] : null;
-
-			if (!answer || answer === 'Could not generate answer.' || answer.startsWith('Error')) return;
-
-			// Implement the React event dispatcher hack
-			field.element.value = answer;
-			field.element.dispatchEvent(new Event('input', { bubbles: true }));
-			field.element.dispatchEvent(new Event('change', { bubbles: true }));
-
-			filledCount++;
-		});
-
-		if (answers.resume_base64) {
-			const fileInput = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
-			if (fileInput) {
-				const injected = injectBase64File(
-					answers.resume_base64,
-					answers.resume_filename || 'Resume.pdf',
-					fileInput
-				);
-				if (injected) filledCount++;
-			}
-		}
-
-		btn.textContent = '✅ Sniped!';
-
-	} catch (error) {
-		console.error('Sniper error:', error);
-		btn.textContent = '❌ Error';
-	}
-
-	setTimeout(() => {
-		btn.textContent = '\u{1FA84} Autofill with JobAgent';
-		btn.disabled = false;
-	}, 3000);
-}
-
-// ─── Type-aware value setter ─────────────────────────────────────────────
-
-/**
- * Apply an LLM answer to a field based on its type.
- * Returns true if the value was successfully set.
- */
-function applyAnswer(field, answer) {
-	switch (field.type) {
-		case 'select':
-			return applySelectAnswer(field.element, answer);
-		case 'radio':
-			return applyRadioAnswer(field.elements || [field.element], answer);
-		default:
-			setNativeValue(field.element, answer);
-			return true;
-	}
-}
-
-/**
- * Set a <select> dropdown to the option whose text or value best matches the answer.
- */
-function applySelectAnswer(selectEl, answer) {
-	const answerLower = answer.toLowerCase().trim();
-
-	// Pass 1: exact text match
-	for (const opt of selectEl.options) {
-		if (opt.textContent.trim().toLowerCase() === answerLower) {
-			setNativeValue(selectEl, opt.value);
-			return true;
-		}
-	}
-
-	// Pass 2: option text contains the answer or vice versa
-	for (const opt of selectEl.options) {
-		const optText = opt.textContent.trim().toLowerCase();
-		if (optText.includes(answerLower) || answerLower.includes(optText)) {
-			setNativeValue(selectEl, opt.value);
-			return true;
-		}
-	}
-
-	// Pass 3: value attribute match
-	for (const opt of selectEl.options) {
-		if (opt.value.toLowerCase() === answerLower) {
-			setNativeValue(selectEl, opt.value);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-/**
- * Check the radio input whose label/value best matches the answer.
- */
-function applyRadioAnswer(radios, answer) {
-	const answerLower = answer.toLowerCase().trim();
-
-	for (const radio of radios) {
-		// Get the label text for this radio
-		const labelText = getRadioLabel(radio).toLowerCase();
-
-		const valueLower = (radio.value || '').toLowerCase();
-
-		// Match against label text or value
-		if (
-			labelText === answerLower ||
-			valueLower === answerLower ||
-			labelText.includes(answerLower) ||
-			answerLower.includes(labelText) ||
-			valueLower.includes(answerLower) ||
-			answerLower.includes(valueLower)
-		) {
-			radio.checked = true;
-			radio.dispatchEvent(new Event('change', { bubbles: true }));
-			radio.dispatchEvent(new Event('click', { bubbles: true }));
-			return true;
-		}
-	}
-
-	return false;
-}
-
-/**
- * Sets a value on an input/textarea in a way that React, Angular,
- * and other frameworks detect. Dispatches both 'input' and 'change'
- * events with bubbling enabled.
- */
-function setNativeValue(element, value) {
-	let prototype = window.HTMLInputElement.prototype;
-	if (element instanceof HTMLTextAreaElement) {
-		prototype = window.HTMLTextAreaElement.prototype;
-	} else if (element instanceof HTMLSelectElement) {
-		prototype = window.HTMLSelectElement.prototype;
-	}
-
-	const nativeInputValueSetter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
-
-	if (nativeInputValueSetter) {
-		nativeInputValueSetter.call(element, value);
-	} else {
-		element.value = value;
-	}
-
+function injectReactSafeValue(element, value) {
+	element.value = value;
 	element.dispatchEvent(new Event('input', { bubbles: true }));
 	element.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-// ─── Inject the "Save Job" button ─────────────────────────────────────────
-
-function injectSaveJobButton() {
-	if (document.getElementById('jobagent-savejob-btn')) return;
-
-	const btn = document.createElement('button');
-	btn.id = 'jobagent-savejob-btn';
-	btn.textContent = '🎯 Save Job';
-	Object.assign(btn.style, {
-		position: 'fixed',
-		bottom: '90px',
-		right: '30px',
-		zIndex: '2147483647',
-		fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-		background: 'linear-gradient(135deg, #10b981, #059669)',
-		color: '#ffffff',
-		border: 'none',
-		padding: '16px 24px',
-		borderRadius: '24px',
-		fontSize: '16px',
-		fontWeight: '600',
-		cursor: 'pointer',
-		boxShadow: '0 8px 24px rgba(16, 185, 129, 0.5)',
-		transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-		letterSpacing: '0.3px',
-	});
-
-	btn.addEventListener('mouseenter', () => {
-		btn.style.transform = 'scale(1.05)';
-		btn.style.boxShadow = '0 12px 32px rgba(16, 185, 129, 0.6)';
-	});
-	btn.addEventListener('mouseleave', () => {
-		btn.style.transform = 'scale(1)';
-		btn.style.boxShadow = '0 8px 24px rgba(16, 185, 129, 0.5)';
-	});
-
-	document.body.appendChild(btn);
-
-	btn.addEventListener('click', handleSaveJobClick);
+function injectBase64File(fileInput, base64String, filename) {
+	try {
+		const bc = atob(base64String);
+		const bn = new Array(bc.length);
+		for (let i = 0; i < bc.length; i++) bn[i] = bc.charCodeAt(i);
+		const ba = new Uint8Array(bn);
+		const blob = new Blob([ba], { type: 'application/pdf' });
+		const file = new File([blob], filename, { type: 'application/pdf' });
+		const dt = new DataTransfer();
+		dt.items.add(file);
+		fileInput.files = dt.files;
+		fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+		console.log(`[JobAgent] Injected file: ${filename}`);
+		return true;
+	} catch (e) {
+		console.error('[JobAgent] File injection failed:', e);
+		return false;
+	}
 }
 
-async function handleSaveJobClick() {
-	const btn = document.getElementById('jobagent-savejob-btn');
-	const originalText = btn.textContent;
-	btn.textContent = '⏳ Saving...';
-	btn.disabled = true;
+function sendBgMessage(action, payload) {
+	return new Promise(resolve => {
+		chrome.runtime.sendMessage({ action, payload }, resolve);
+	});
+}
 
-	const jobDescription = typeof scrapeJobDescription === 'function' ? scrapeJobDescription() : '';
-	const title = document.title || 'Unknown Title';
-	const company = document.title.split('-')[0].trim() || 'Unknown Company';
+function extractPageTitle() {
+	const h1 = document.querySelector('h1');
+	if (h1 && h1.textContent.trim().length > 3) return h1.textContent.trim();
+	const og = document.querySelector('meta[property="og:title"]');
+	if (og) return og.content.trim();
+	return document.title.split('|')[0].split('-')[0].trim();
+}
+
+function extractCompanyName() {
+	const wd = document.querySelector('[data-automation-id="company"]');
+	if (wd) return wd.textContent.trim();
+	const og = document.querySelector('meta[property="og:site_name"]');
+	if (og) return og.content.trim();
+	try {
+		const h = window.location.hostname.replace('www.', '').split('.')[0];
+		return h.charAt(0).toUpperCase() + h.slice(1);
+	} catch { return 'Unknown'; }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §2  INLINE SUGGESTION UI  (stays in-place next to textareas — NOT in FAM)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const BLOCKLIST = ['name', 'email', 'phone', 'address', 'city', 'state', 'zip',
+	'title', 'company', 'url', 'linkedin', 'github', 'portfolio', 'salary', 'date'];
+const TARGET_KEYWORDS = /why|describe|experience with|please explain/i;
+
+function detectAndDecorateFields() {
+	const sel = 'textarea, textarea[data-automation-id], input[type="text"], input:not([type]), input[data-automation-id]';
+	document.querySelectorAll(sel).forEach((el) => {
+		if (el.dataset.sniperDecorated) return;
+		if (el.offsetParent === null && el.type !== 'hidden') return;
+		if (el.type === 'hidden' || el.readOnly || el.disabled) return;
+		const question = extractQuestion(el);
+		if (!question) return;
+		const qL = question.toLowerCase();
+		if (BLOCKLIST.some(b => qL.includes(b))) return;
+		if (el.tagName.toLowerCase() === 'textarea' || TARGET_KEYWORDS.test(qL)) {
+			el.dataset.sniperDecorated = 'true';
+			injectSuggestionButton(el, question);
+		}
+	});
+}
+
+function injectSuggestionButton(inputEl, question) {
+	const btn = document.createElement('button');
+	btn.textContent = '✨ Suggest Answer';
+	btn.type = 'button';
+	btn.dataset.jobagentSuggestBtn = 'true';
+	Object.assign(btn.style, {
+		display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+		marginTop: '6px', marginBottom: '12px', padding: '5px 10px',
+		fontSize: '12px', fontWeight: '600', color: '#fff',
+		background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+		border: 'none', borderRadius: '6px', cursor: 'pointer',
+		boxShadow: '0 2px 4px rgba(99,102,241,0.3)', transition: 'all 0.2s ease',
+		fontFamily: 'system-ui, sans-serif'
+	});
+	btn.addEventListener('mouseenter', () => btn.style.transform = 'translateY(-1px)');
+	btn.addEventListener('mouseleave', () => btn.style.transform = 'translateY(0)');
+	btn.addEventListener('click', async (e) => { e.preventDefault(); await handleSuggestClick(btn, inputEl, question); });
+	if (inputEl.nextSibling) inputEl.parentNode.insertBefore(btn, inputEl.nextSibling);
+	else inputEl.parentNode.appendChild(btn);
+}
+
+async function handleSuggestClick(btn, inputEl, question) {
+	const orig = btn.textContent;
+	btn.textContent = '⏳ Generating...'; btn.disabled = true;
+	const payload = { url: window.location.href, questions: [question] };
+	try {
+		let res = await sendBgMessage('sniperAnswer', payload);
+		if (res && res.status === 404) {
+			const mid = prompt('Job not found. Enter Job ID:');
+			if (mid) { payload.job_id = mid; res = await sendBgMessage('sniperAnswer', payload); }
+			else { btn.textContent = '❌ Not Found'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000); return; }
+		}
+		if (res && res.status === 200 && res.data) {
+			const answers = res.data;
+			const nq = normalizeKey(question);
+			const mk = Object.keys(answers).find(k => normalizeKey(k) === nq);
+			const ans = mk ? answers[mk] : null;
+			if (ans && !ans.startsWith('Error') && ans !== 'Could not generate answer.') {
+				injectReactSafeValue(inputEl, ans);
+				btn.textContent = '✅ Suggested';
+				if (answers.resume_base64 && !window._jaResumeInjected) {
+					const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
+					if (fi) { injectBase64File(fi, answers.resume_base64, answers.resume_filename || 'Resume.pdf'); window._jaResumeInjected = true; }
+				}
+			} else { btn.textContent = '❌ Failed'; }
+		} else { btn.textContent = '❌ Error'; }
+	} catch (e) { console.error('[JobAgent] Suggest error:', e); btn.textContent = '❌ Error'; }
+	setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §3  STATE ENGINE  — backend truth + chrome.storage.local cache
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Possible UI states for the FAM:  untracked → tracked → tailored → applied
+const STATE = { UNTRACKED: 'untracked', TRACKED: 'tracked', TAILORED: 'tailored', APPLIED: 'applied' };
+
+window._ja = {
+	state: STATE.UNTRACKED,
+	job: null,          // {job_id, score, status, reason, ...}
+	pendingResume: null, // {base64, filename}
+	resumeInjected: false,
+};
+
+/**
+ * Determine the correct UI state from two sources:
+ *   1. Backend truth (scoutCheckUrl → job row)
+ *   2. chrome.storage.local cache (instant on SPA re-inject)
+ */
+async function resolveState() {
+	// ── Tier 1: Check chrome.storage.local for fast SPA recovery ──
+	let cachedJobId = null;
+	try {
+		const stored = await chrome.storage.local.get(null);
+		for (const key of Object.keys(stored)) {
+			if (key.startsWith('tailored_') && stored[key] === true) {
+				cachedJobId = key.replace('tailored_', '');
+				break;
+			}
+		}
+	} catch (e) { /* storage unavailable, continue */ }
+
+	if (cachedJobId) {
+		window._ja.state = STATE.TAILORED;
+		window._ja.job = window._ja.job || { job_id: cachedJobId };
+		return;
+	}
+
+	// ── Tier 2: Backend truth via scoutCheckUrl ──
+	try {
+		const res = await sendBgMessage('scoutCheckUrl', { url: window.location.href });
+		if (res && res.status === 200 && res.data && res.data.tracked) {
+			const job = res.data.job;
+			window._ja.job = job;
+
+			const status = (job.status || '').toLowerCase();
+			if (status === 'applied') {
+				window._ja.state = STATE.APPLIED;
+			} else if (status === 'tailored' || job.resume_path) {
+				window._ja.state = STATE.TAILORED;
+			} else {
+				window._ja.state = STATE.TRACKED;
+			}
+			return;
+		}
+	} catch (e) { console.error('[JobAgent] resolveState backend error:', e); }
+
+	// ── Default: untracked ──
+	window._ja.state = STATE.UNTRACKED;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §4  FLOATING ACTION MENU  — collapsible panel, docked right-center
+// ═══════════════════════════════════════════════════════════════════════════
+
+const FAM_ID = 'jobagent-fam-root';
+let _famObserverPaused = false; // prevents re-injection loops
+
+function buildFAM() {
+	if (document.getElementById(FAM_ID)) return; // already exists
+
+	// ── Root Container ──
+	const root = document.createElement('div');
+	root.id = FAM_ID;
+	Object.assign(root.style, {
+		position: 'fixed', right: '0', top: '30%',
+		zIndex: '999999', display: 'flex', flexDirection: 'row',
+		fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+		transition: 'transform 0.25s ease',
+	});
+
+	// ── Toggle Tab ──
+	const toggle = document.createElement('button');
+	toggle.id = 'jobagent-fam-toggle';
+	toggle.textContent = '🎯';
+	toggle.type = 'button';
+	Object.assign(toggle.style, {
+		width: '36px', height: '36px', border: 'none', cursor: 'pointer',
+		background: 'linear-gradient(180deg, #4f46e5, #6366f1)',
+		color: '#fff', fontSize: '18px', borderRadius: '8px 0 0 8px',
+		display: 'flex', alignItems: 'center', justifyContent: 'center',
+		boxShadow: '-2px 2px 8px rgba(0,0,0,0.2)',
+		transition: 'background 0.2s ease',
+		alignSelf: 'flex-start',
+	});
+
+	// ── Panel ──
+	const panel = document.createElement('div');
+	panel.id = 'jobagent-fam-panel';
+	Object.assign(panel.style, {
+		width: '220px', background: '#1e1b2e',
+		borderRadius: '12px 0 0 12px', padding: '14px 12px',
+		display: 'flex', flexDirection: 'column', gap: '10px',
+		boxShadow: '-4px 4px 20px rgba(0,0,0,0.35)',
+		transition: 'width 0.25s ease, padding 0.25s ease, opacity 0.25s ease',
+		overflow: 'hidden',
+	});
+
+	let panelOpen = true;
+	toggle.addEventListener('click', () => {
+		panelOpen = !panelOpen;
+		if (panelOpen) {
+			panel.style.width = '220px';
+			panel.style.padding = '14px 12px';
+			panel.style.opacity = '1';
+		} else {
+			panel.style.width = '0px';
+			panel.style.padding = '14px 0';
+			panel.style.opacity = '0';
+		}
+	});
+
+	// ── Status Badge ──
+	const badge = document.createElement('div');
+	badge.id = 'jobagent-fam-badge';
+	Object.assign(badge.style, {
+		fontSize: '11px', color: '#a5b4fc', textAlign: 'center',
+		padding: '2px 0 4px 0', letterSpacing: '0.5px',
+		borderBottom: '1px solid rgba(255,255,255,0.08)',
+		marginBottom: '4px', fontWeight: '500',
+	});
+	badge.textContent = 'JobAgent';
+	panel.appendChild(badge);
+
+	// ── Action Buttons Container ──
+	const actionsDiv = document.createElement('div');
+	actionsDiv.id = 'jobagent-fam-actions';
+	actionsDiv.style.display = 'flex';
+	actionsDiv.style.flexDirection = 'column';
+	actionsDiv.style.gap = '8px';
+	panel.appendChild(actionsDiv);
+
+	root.appendChild(toggle);
+	root.appendChild(panel);
+
+	_famObserverPaused = true;
+	document.body.appendChild(root);
+	requestAnimationFrame(() => { _famObserverPaused = false; });
+
+	renderFAMActions();
+}
+
+/** Creates a styled button for the FAM panel */
+function createFAMButton(id, text, gradient, shadowColor) {
+	const btn = document.createElement('button');
+	btn.id = id;
+	btn.textContent = text;
+	btn.type = 'button';
+	Object.assign(btn.style, {
+		width: '100%', border: 'none', cursor: 'pointer',
+		padding: '10px 12px', borderRadius: '8px',
+		fontSize: '13px', fontWeight: '600', color: '#fff',
+		background: gradient,
+		boxShadow: `0 3px 10px ${shadowColor}`,
+		transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+		fontFamily: 'inherit', letterSpacing: '0.2px',
+	});
+	btn.addEventListener('mouseenter', () => {
+		btn.style.transform = 'translateY(-1px)';
+	});
+	btn.addEventListener('mouseleave', () => {
+		btn.style.transform = 'translateY(0)';
+	});
+	return btn;
+}
+
+/**
+ * Render the correct set of buttons inside the FAM based on window._ja.state.
+ */
+function renderFAMActions() {
+	const container = document.getElementById('jobagent-fam-actions');
+	if (!container) return;
+
+	// Clear existing buttons
+	container.innerHTML = '';
+
+	const state = window._ja.state;
+
+	// ── UNTRACKED: Show "Track & Score" ──
+	if (state === STATE.UNTRACKED) {
+		const btn = createFAMButton(
+			'ja-track', '📥 Track & Score Job',
+			'linear-gradient(135deg, #3b82f6, #2563eb)', 'rgba(59,130,246,0.4)'
+		);
+		btn.addEventListener('click', handleTrackClick);
+		container.appendChild(btn);
+	}
+
+	// ── TRACKED: Show "Tailor Resume" ──
+	if (state === STATE.TRACKED) {
+		const btn = createFAMButton(
+			'ja-tailor', '📄 Tailor & Inject Resume',
+			'linear-gradient(135deg, #8b5cf6, #7c3aed)', 'rgba(139,92,246,0.4)'
+		);
+		btn.addEventListener('click', handleTailorClick);
+		container.appendChild(btn);
+	}
+
+	// ── TAILORED: Show "Mark Applied" ──
+	if (state === STATE.TAILORED) {
+		const btn = createFAMButton(
+			'ja-applied', '🏁 Mark Applied',
+			'linear-gradient(135deg, #f59e0b, #d97706)', 'rgba(245,158,11,0.4)'
+		);
+		btn.addEventListener('click', handleMarkAppliedClick);
+		container.appendChild(btn);
+	}
+
+	// ── APPLIED: Show "Done" (disabled) ──
+	if (state === STATE.APPLIED) {
+		const btn = createFAMButton(
+			'ja-done', '✅ Applied & Cleaned',
+			'linear-gradient(135deg, #10b981, #059669)', 'rgba(16,185,129,0.3)'
+		);
+		btn.disabled = true;
+		btn.style.cursor = 'default';
+		btn.style.opacity = '0.8';
+		container.appendChild(btn);
+	}
+
+	// ── Always show "Mark Applied" as a secondary if tracked but not yet applied ──
+	if (state === STATE.TRACKED || state === STATE.TAILORED) {
+		// Only add if not already the primary
+		if (state === STATE.TRACKED) {
+			const btn2 = createFAMButton(
+				'ja-applied-secondary', '🏁 Mark Applied',
+				'linear-gradient(135deg, #f59e0b, #d97706)', 'rgba(245,158,11,0.3)'
+			);
+			btn2.style.opacity = '0.7';
+			btn2.style.fontSize = '11px';
+			btn2.style.padding = '7px 10px';
+			btn2.addEventListener('click', handleMarkAppliedClick);
+			container.appendChild(btn2);
+		}
+	}
+
+	// ── Update badge ──
+	const badge = document.getElementById('jobagent-fam-badge');
+	if (badge) {
+		const job = window._ja.job;
+		if (job && job.job_id) {
+			const score = job.score ? ` · ${job.score}/10` : '';
+			badge.textContent = `JobAgent${score}`;
+		}
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §5  ACTION HANDLERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Track & Score ──
+
+async function handleTrackClick() {
+	const btn = document.getElementById('ja-track');
+	if (!btn) return;
+	btn.textContent = '⏳ Scoring...'; btn.disabled = true;
 
 	const payload = {
-		title: title,
-		company: company,
 		url: window.location.href,
-		job_description: jobDescription
+		title: extractPageTitle(),
+		company: extractCompanyName(),
+		page_text: document.body.innerText.substring(0, 15000),
 	};
 
 	try {
-		const res = await fetch('http://localhost:8000/track_job', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(payload)
-		});
-		if (res.ok) {
-			btn.textContent = '✅ Saved!';
-			btn.style.background = 'linear-gradient(135deg, #059669, #047857)';
+		const res = await sendBgMessage('scoutOrganic', payload);
+		if (res && res.status === 200 && res.data) {
+			const d = res.data;
+			window._ja.job = { job_id: d.job_id, score: d.score, status: d.job_status, reason: d.reason };
+
+			if (d.job_status === 'shortlisted') {
+				btn.textContent = `✅ Tracked! Score: ${d.score}/10`;
+				btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+			} else {
+				btn.textContent = `⚠️ Score: ${d.score}/10 (${d.job_status})`;
+				btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+			}
+
+			// Transition state after a brief pause
+			setTimeout(() => {
+				window._ja.state = STATE.TRACKED;
+				renderFAMActions();
+			}, 2000);
 		} else {
-			btn.textContent = '❌ Failed';
+			btn.textContent = '❌ Error';
+			setTimeout(() => { btn.textContent = '📥 Track & Score Job'; btn.disabled = false; }, 3000);
 		}
 	} catch (e) {
-		console.error('Save Job error:', e);
+		console.error('[JobAgent] Track error:', e);
 		btn.textContent = '❌ Error';
+		setTimeout(() => { btn.textContent = '📥 Track & Score Job'; btn.disabled = false; }, 3000);
 	}
-
-	setTimeout(() => {
-		btn.textContent = originalText;
-		btn.disabled = false;
-		btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-	}, 3000);
 }
 
-// ─── Inject the "Mark Applied" button ─────────────────────────────────────
+// ── Tailor & Inject Resume ──
 
-function injectMarkAppliedButton() {
-	if (document.getElementById('jobagent-markapplied-btn')) return;
+async function handleTailorClick() {
+	const btn = document.getElementById('ja-tailor');
+	if (!btn) return;
+	btn.textContent = '⏳ Forging Resume...'; btn.disabled = true;
 
-	const btn = document.createElement('button');
-	btn.id = 'jobagent-markapplied-btn';
-	btn.textContent = '🏁 Mark Applied';
-	Object.assign(btn.style, {
-		position: 'fixed',
-		bottom: '150px',
-		right: '30px',
-		zIndex: '2147483647',
-		fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-		background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-		color: '#ffffff',
-		border: 'none',
-		padding: '16px 24px',
-		borderRadius: '24px',
-		fontSize: '16px',
-		fontWeight: '600',
-		cursor: 'pointer',
-		boxShadow: '0 8px 24px rgba(245, 158, 11, 0.5)',
-		transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-		letterSpacing: '0.3px',
-	});
-
-	btn.addEventListener('mouseenter', () => {
-		btn.style.transform = 'scale(1.05)';
-		btn.style.boxShadow = '0 12px 32px rgba(245, 158, 11, 0.6)';
-	});
-	btn.addEventListener('mouseleave', () => {
-		btn.style.transform = 'scale(1)';
-		btn.style.boxShadow = '0 8px 24px rgba(245, 158, 11, 0.5)';
-	});
-
-	document.body.appendChild(btn);
-
-	btn.addEventListener('click', handleMarkAppliedClick);
-}
-
-async function handleMarkAppliedClick() {
-	const btn = document.getElementById('jobagent-markapplied-btn');
-	const originalText = btn.textContent;
-	btn.textContent = '⏳ Completing...';
-	btn.disabled = true;
+	const payload = { url: window.location.href };
+	if (window._ja.job?.job_id) payload.job_id = window._ja.job.job_id;
 
 	try {
-		const res = await fetch('http://localhost:8000/api/sniper/complete', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ url: window.location.href })
-		});
-		if (res.ok) {
-			btn.textContent = '🎉 Done!';
-			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+		const res = await sendBgMessage('tailorGenerate', payload);
+		if (res && res.status === 200 && res.data) {
+			const { resume_base64, filename, job_id } = res.data;
+			const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
+
+			if (fi && resume_base64) {
+				const ok = injectBase64File(fi, resume_base64, filename || 'Resume.pdf');
+				if (ok) {
+					btn.textContent = '✅ Resume Injected!';
+					btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+					window._ja.resumeInjected = true;
+				} else {
+					btn.textContent = '❌ Injection Failed';
+				}
+			} else if (resume_base64) {
+				window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf' };
+				btn.textContent = '✅ Resume Ready';
+				btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+			} else {
+				btn.textContent = '❌ No PDF';
+			}
+
+			// ── Persist to chrome.storage.local ──
+			const jid = job_id || window._ja.job?.job_id;
+			if (jid) {
+				try { chrome.storage.local.set({ [`tailored_${jid}`]: true }); } catch (e) { /* ok */ }
+			}
+
+			// Transition to TAILORED state
+			setTimeout(() => {
+				window._ja.state = STATE.TAILORED;
+				renderFAMActions();
+			}, 2000);
+		} else if (res && res.status === 404) {
+			btn.textContent = '❌ Job Not Found';
+			setTimeout(() => { btn.textContent = '📄 Tailor & Inject Resume'; btn.disabled = false; }, 3000);
 		} else {
-			btn.textContent = '❌ Failed';
+			btn.textContent = '❌ Error';
+			setTimeout(() => { btn.textContent = '📄 Tailor & Inject Resume'; btn.disabled = false; }, 3000);
 		}
 	} catch (e) {
-		console.error('Mark Applied error:', e);
+		console.error('[JobAgent] Tailor error:', e);
 		btn.textContent = '❌ Error';
+		setTimeout(() => { btn.textContent = '📄 Tailor & Inject Resume'; btn.disabled = false; }, 3000);
 	}
-
-	setTimeout(() => {
-		btn.textContent = originalText;
-		btn.disabled = false;
-		btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
-	}, 3000);
 }
+
+// ── Mark Applied (Shredder) ──
+
+async function handleMarkAppliedClick() {
+	// Find whichever "mark applied" button exists
+	const btn = document.getElementById('ja-applied') || document.getElementById('ja-applied-secondary');
+	if (!btn) return;
+	btn.textContent = '🧹 Cleaning up...'; btn.disabled = true;
+
+	const payload = { url: window.location.href };
+	if (window._ja.job?.job_id) payload.job_id = window._ja.job.job_id;
+
+	try {
+		const res = await sendBgMessage('sniperComplete', payload);
+		if (res && res.status === 200 && res.data) {
+			const shredCount = res.data.shredded ? res.data.shredded.length : 0;
+			btn.textContent = `✅ SSD Clean (${shredCount} shredded)`;
+			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+			btn.style.cursor = 'default';
+
+			// ── Clear chrome.storage.local cache ──
+			const jid = window._ja.job?.job_id;
+			if (jid) {
+				try { chrome.storage.local.remove(`tailored_${jid}`); } catch (e) { /* ok */ }
+			}
+
+			// Transition to APPLIED
+			window._ja.state = STATE.APPLIED;
+			setTimeout(() => renderFAMActions(), 1500);
+		} else {
+			btn.textContent = '❌ Failed';
+			setTimeout(() => { btn.textContent = '🏁 Mark Applied'; btn.disabled = false; }, 3000);
+		}
+	} catch (e) {
+		console.error('[JobAgent] Mark Applied error:', e);
+		btn.textContent = '❌ Error';
+		setTimeout(() => { btn.textContent = '🏁 Mark Applied'; btn.disabled = false; }, 3000);
+	}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// §6  SPA-SAFE OBSERVER + INITIALIZATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * If a file input appears after the resume was already generated,
+ * automatically inject the pending resume.
+ */
+function tryInjectPendingResume() {
+	if (!window._ja.pendingResume || window._ja.resumeInjected) return;
+	const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
+	if (fi) {
+		const { base64, filename } = window._ja.pendingResume;
+		if (injectBase64File(fi, base64, filename)) {
+			window._ja.resumeInjected = true;
+			window._ja.pendingResume = null;
+			console.log('[JobAgent] Pending resume auto-injected into newly-appeared file input.');
+		}
+	}
+}
+
+/**
+ * The MutationObserver serves two purposes:
+ *   1. Detects when ATS SPA navigation destroys the FAM → re-injects it
+ *   2. Continues decorating new textarea fields as they appear
+ */
+function startObserver() {
+	const observer = new MutationObserver(() => {
+		if (_famObserverPaused) return; // prevent re-injection loops
+
+		// Re-inject FAM if it was destroyed by SPA navigation
+		if (!document.getElementById(FAM_ID)) {
+			console.log('[JobAgent] FAM destroyed by SPA navigation — re-injecting');
+			buildFAM();
+		}
+
+		// Continue decorating textareas
+		detectAndDecorateFields();
+
+		// Try pending resume injection
+		tryInjectPendingResume();
+	});
+
+	observer.observe(document.body, { childList: true, subtree: true });
+}
+
+/**
+ * Main initialization — called once on page load.
+ */
+async function init() {
+	// 1. Resolve state from backend + chrome.storage.local
+	await resolveState();
+
+	// 2. Build the FAM with the correct state
+	buildFAM();
+
+	// 3. Decorate Q&A fields with inline suggestion buttons
+	detectAndDecorateFields();
+
+	// 4. Start the SPA-safe MutationObserver
+	startObserver();
+}
+
+window.addEventListener('load', init);

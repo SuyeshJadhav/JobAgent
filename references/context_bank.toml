@@ -67,150 +67,115 @@ dates   = "December 2023 – February 2024"
 # ══════════════════════════════════════════════════════════════
 
 [[project]]
-name  = "AI Assistant"
-tools_used = "Python, FastAPI, Llama 3.2, ChromaDB, SQLite, React Native"
-github_link = "https://github.com/SuyeshJadhav/AI_Assistant"
-
-what_does_it_do = """
-  Production-grade local LLM system with a custom agent runtime
-  and hybrid memory architecture.
-"""
-
-  [[project.bullet_1]]
-  what_did_you_build    = "A production-grade local LLM system"
-  tools_used            = "Ollama, Llama 3.2, RTX 3050"
-  how_it_works          = "Prompt tuning, batching, and GPU offloading"
-  metric                = "90 tokens/sec"
-  what_was_hard         = "Getting fast inference on a consumer GPU (RTX 3050)"
-
-  [[project.bullet_2]]
-  what_did_you_build    = "A custom agent runtime with deterministic tool execution"
-  tools_used            = "Python"
-  how_it_works          = "Decorator-based registry for tools, loop-detection guards"
-  scale                 = "14 tools registered"
-  what_was_hard         = "Eliminating infinite reasoning cycles in multi-step tasks"
-  interesting_decision  = "Used decorator-based registry so adding tools is just an annotation"
-
-  [[project.bullet_3]]
-  what_did_you_build    = "A hybrid memory architecture"
-  tools_used            = "SQLite (WAL mode), ChromaDB"
-  how_it_works          = "SQLite for structured state, ChromaDB for semantic recall"
-  metric                = "Sub-10ms retrieval with controlled prompt growth"
-  interesting_decision  = "Combined structured DB (SQLite WAL) with vector store (ChromaDB) for different retrieval needs"
-
-
-[[project]]
 name  = "TweetScape"
-tools_used = "Python, FastAPI, React 19, D3.js, Transformers, UMAP, Playwright"
+tools_used = "React 19, FastAPI, D3.js, Transformers, SQLite"
 github_link = "https://github.com/SuyeshJadhav/tweetscape"
 
 what_does_it_do = """
-  Real-time social media analysis platform with a multi-model NLP pipeline,
-  interactive cluster visualization, and a Playwright scraper.
+  A full-stack social media analytics platform that processes tweets through a massive 10-stage NLP processing pipeline, rendering the data onto an interactive physics-based React frontend.
 """
 
   [[project.bullet_1]]
-  what_did_you_build    = "A real-time social media analysis platform"
-  tools_used            = "FastAPI, React 19"
-  how_it_works          = "4-model NLP pipeline (sentiment, clustering, embedding, classification)"
-  metric                = "500+ texts/sec throughput"
+  what_did_you_build    = "A 10-stage NLP pipeline for end-to-end data processing"
+  tools_used            = "FastAPI, SentenceTransformers, RoBERTa, DistilRoBERTa, KeyBERT"
+  how_it_works          = "Scraped and deduplicated tweets before passing them through a heavy 5-model inference stack including sentiment, emotion, and clustering analysis"
+  metric                = "Processed tweets at 75ms per tweet across 5 models; SentenceTransformers evaluated at 484 texts/sec"
 
   [[project.bullet_2]]
-  what_did_you_build    = "Dimensionality reduction and interactive cluster visualization"
-  tools_used            = "UMAP, D3.js, SQLite"
-  how_it_works          = "Reduced 384D embeddings to 2D using UMAP for D3.js visualization; SQLite caching for repeated computations"
-  metric                = "<1ms lookups after caching (7x speedup)"
-  interesting_decision  = "Used SQLite caching to avoid recomputing embeddings"
+  what_did_you_build    = "An interactive force-directed visualization simulation"
+  tools_used            = "React 19, D3.js, UMAP, TF-IDF"
+  how_it_works          = "Reduced vector embeddings to 2D via UMAP and mapped sentiment polarities to specific visual nodes with collision physics, glow effects, and hover tooltips"
+  interesting_decision  = "Added glow effects specifically for high-polarity nodes (|score| > 0.7) to immediately capture user attention"
 
   [[project.bullet_3]]
-  what_did_you_build   = "A Playwright scraper with deduplication pipeline"
-  tools_used           = "Playwright"
-  how_it_works         = "Session persistence and bot-evasion, feeding into a dedup pipeline"
-  metric               = "1,000+ records processed in under 2ms"
+  what_did_you_build    = "A smart caching layer and LLM query expansion implementation"
+  tools_used            = "SQLite, Ollama Gemma"
+  how_it_works          = "Cached SQLite query-results to short-circuit redundant scraping and model inference on repeated, overlapping topics"
+  metric                = "Configured cache with a 24-hour TTL for optimal throughput"
+
+
+[[project]]
+name  = "Personal AI Agent"
+tools_used = "Python, FastAPI, SQLite, ChromaDB, Ollama, React Native"
+github_link = "https://github.com/SuyeshJadhav/AI_Assistant"
+
+what_does_it_do = """
+  A highly personalized ReAct reasoning AI system configured with voice I/O, strict dynamic tool generation, extensive database mapping, and rapid local inference metrics.
+"""
+
+  [[project.bullet_1]]
+  what_did_you_build    = "A full multi-tool ReAct reasoning agent system"
+  tools_used            = "Python, FastAPI"
+  how_it_works          = "Built a comprehensive 6-tool runtime with decorator-based auto-registration, explicitly extracting docstrings/type-hints to block infinite reasoning recursion"
+  metric                = "Handled parameter coercion and enforced loop-detection guards across 9 intent categories"
+
+  [[project.bullet_2]]
+  what_did_you_build    = "A dual-storage memory and caching system"
+  tools_used            = "SQLite, ChromaDB"
+  how_it_works          = "Split structured constraints onto SQLite and mapped deep context directly onto ChromaDB 384D semantic embeddings"
+  metric                = "Achieved 2.61ms avg SQLite retrieval latency (1,000+ rows) and 190ms semantic search; optimized via 15+ strategic SQLite indexes and WAL journaling to hit sub-3ms P95 latency"
+
+  [[project.bullet_3]]
+  what_did_you_build    = "Hardware-aware backend with personality profiling"
+  tools_used            = "Ollama, Groq, OpenAI, Whisper"
+  how_it_works          = "Aggregated 4 backend providers while quantizing Whisper I/O. Added a personality engine profiling tone, persistence, and logic."
+  metric                = "Achieved 90 tokens/sec local inference on an RTX 3050; personality cached with rapid 5-minute TTL"
 
 
 [[project]]
 name  = "WolfCafe+"
-tools_used = "React, Node.js, Express, MongoDB, Jest, CI/CD"
+tools_used = "React, Node.js, MongoDB, Socket.IO, GitHub Actions"
 github_link = "https://github.com/SuyeshJadhav/WrikiCafePlus"
 
 what_does_it_do = """
-  Full-stack web app with domain-driven backend, reusable component library,
-  and a comprehensive test suite.
+  A scalable, full-stack campus dining and group ordering platform heavily secured and evaluated using custom MongoDB aggregation pipelines and ML-driven product recommendations.
 """
 
   [[project.bullet_1]]
-  what_did_you_build    = "Backend with domain models and aggregation pipelines"
-  tools_used            = "MongoDB"
-  scale                 = "8+ domain models"
-  metric                = "~2ms API latency, ~450 req/sec under load"
+  what_did_you_build    = "The entire backend suite alongside an ML recommendation engine"
+  tools_used            = "Node.js, Express, JWT"
+  how_it_works          = "Programmed 10 distinct router modules and 11 controllers for managing all admin and transactional data via role-based access control and JWT"
+  metric                = "Maintained 45+ robust REST endpoints"
 
   [[project.bullet_2]]
-  what_did_you_build    = "Reusable React component library with optimistic UI"
-  tools_used            = "React"
-  scale                 = "20+ reusable components"
-  how_it_works          = "Optimistic UI updates to eliminate perceived latency during async state transitions"
+  what_did_you_build    = "A real-time hybrid group ordering system"
+  tools_used            = "Socket.IO, Express"
+  how_it_works          = "Returned HTTP response immediately, deferring room broadcast triggers, async socket dispatches, and email notifications to the background"
+  metric                = "Supported 6-char share codes with isolated 2-hour session expiry logic"
 
   [[project.bullet_3]]
-  what_did_you_build    = "Auth and testing infrastructure"
-  tools_used            = "JWT, Jest, Supertest, CI/CD"
-  metric                = ">85% test coverage"
-  how_it_works          = "JWT auth for API security, Jest/Supertest suite integrated into CI/CD pipeline"
-
-[[project]]
-name = "http-viewr"
-tools_used = "Python, Requests, Rich, Pillow, WezTerm"
-github_link = "https://github.com/SuyeshJadhav/http-viewr"
-
-what_does_it_do = """
-  A smart CLI HTTP client that fetches URLs and provides syntax-highlighted JSON/HTML/XML responses, formatted headers and timing metrics, and native inline image rendering directly in the terminal using WezTerm.
-"""
-
-  [[project.bullet_1]]
-  what_did_you_build    = "Smart CLI HTTP client with syntax-highlighted payloads"
-  tools_used            = "Python, Requests, Rich"
-  how_it_works          = "Automatically beautifies and colorizes JSON, HTML, and XML responses while calculating network timing metrics"
-  metrics               = "Supported 4 REST data formats and profiled API round-trip latency down to 0.1-millisecond resolution"
-
-  [[project.bullet_2]]
-  what_did_you_build    = "Native inline terminal image rendering integration"
-  tools_used            = "Pillow, subprocess, WezTerm"
-  how_it_works          = "Processes image payload bytes on the fly to render high-resolution images natively via WezTerm's imgcat command"
-  metrics               = "Eliminated disk I/O by buffering image bytes in RAM, enabling sub-second inline rendering in terminal"
-
-  [[project.bullet_3]]
-  what_did_you_build    = "Streamlined CLI developer experience"
-  tools_used            = "argparse, PowerShell"
-  how_it_works          = "Provides customizable HTTP method selection and viewer toggles mapped to a lightweight zero-friction PowerShell alias"
-  metrics               = "Condensed 15-character commands to a 2-character alias; profiled API round-trip latency to 0.1ms resolution" 
+  what_did_you_build    = "Extensive administrative analytics and heavy test automation"
+  tools_used            = "MongoDB, Jest, GitHub Actions, Codecov"
+  how_it_works          = "Used MongoDB aggregation for detailed time-series trends and sales, completely wrapping deployments with Jest configurations"
+  metric                = "Analytics pipelines hit a 2.17ms average API response across 100 iterations; ran tests across 50 individual test files on Node 20"
 
 
 [[project]]
-name = "Plagiarism and AI Detection"
-tools_used = "Python, FastAPI, Next.js, React, Tailwind CSS, Radix UI, MongoDB, PyTorch, Hugging Face Transformers, spaCy, NLTK, Scikit-Learn, BeautifulSoup"
+name = "Academic Integrity Platform"
+tools_used = "Python, FastAPI, Next.js 14, PyTorch, MongoDB, Transformers"
 github_link = "https://github.com/SuyeshJadhav/plagiarism-detection"
 
 what_does_it_do = """
-  A full-stack application designed for detecting plagiarism and AI-generated content in documents. It features a Next.js React frontend and a FastAPI backend powered by various NLP and machine learning libraries (such as PyTorch, Hugging Face Transformers, spaCy, and NLTK) to process uploaded documents, analyze text similarity, and identify potential academic dishonesty or AI assistance.
+  A hyper-responsive, heavily concurrent asynchronous application architecture running a dual-detection ensemble model configured to prevent system timeouts when handling intense document NLP workloads.
 """
 
   [[project.bullet_1]]
-    what_did_you_build    = "Hybrid AI Content Detection System"
-    tools_used            = "Python, PyTorch, Hugging Face Transformers, RoBERTa, GPT-2"
-    how_it_works          = "Implemented a multi-model approach using RoBERTa sequence classification with sliding 400-word windows and a customized DetectGPT perturbation algorithm to expose AI-generated text based on log-probability curvature."
-    metrics               = "RoBERTa (512 token limit) combined with GPT-2 generating 5 synonym-based permutations per text block"
+  what_did_you_build    = "An 8-stage asynchronous processing pipeline"
+  tools_used            = "FastAPI, Next.js 14, asyncio"
+  how_it_works          = "Decoupled massive heavy GPU blocking ML sequences from standard networking upload requests via singleton caching and asyncio gathers"
+  metric                = "Smoothly directed upload, conversion, extracting, scraping, and NLP analysis via 14 endpoints and 3 distinct routers"
 
   [[project.bullet_2]]
-    what_did_you_build    = "Scalable Plagiarism & Semantic Matching Engine"
-    tools_used            = "spaCy, NLTK, Scikit-Learn, Sentence-Transformers (all-MiniLM-L6-v2)"
-    how_it_works          = "Developed a dual-stage text matching pipeline calculating an aggregated similarity score using TF-IDF for lexical matches and averaged 384-dimensional MiniLM embeddings for semantic paragraph-level comparisons."
-    metrics               = "Cosine similarity threshold of 0.65 with a weighted 70% BERT / 30% TF-IDF ensemble"
+  what_did_you_build    = "A dual AI assessment and perturbation engine"
+  tools_used            = "PyTorch, RoBERTa, DetectGPT"
+  how_it_works          = "Utilized RoBERTa-large-openai-detector and DetectGPT 5-perturbation analysis bridged over a deliberate 400-word chunking constraint logic to avoid NLP token limitations"
+  metric                = "Configured weighted logic using 70% average computation and 30% local peak assessments for precise results"
 
   [[project.bullet_3]]
-    what_did_you_build    = "Automated Research Scraping & Document Processing Pipeline"
-    tools_used            = "FastAPI, Next.js, Marker (PDF to MD), arXiv API, MongoDB"
-    how_it_works          = "Engineered an asynchronous endpoint that accepts uploaded PDFs, converts them directly to Markdown using Marker, and concurrently scrapes relevant external papers from arXiv via background processes."
-    metrics               = "Automatically pulls top 5 relevant arXiv papers per query to use as dynamic comparison sources"
+  what_did_you_build    = "Automated scraping and hybrid plagiarism systems"
+  tools_used            = "TF-IDF, all-MiniLM-L6-v2, arXiv API"
+  how_it_works          = "Combined TF-IDF alongside BERT semantics while actively querying arXiv to immediately fetch related document context"
+  metric                = "Scraped up to 5 papers automatically; applied document-type-specific thresholds at 0.60 to 0.70 via a strict 30/70 weighting distribution"
 
 
 
@@ -222,9 +187,10 @@ what_does_it_do = """
 
 [[voice_samples]]
 samples = [
-  "Built a production-grade local LLM system using Ollama + Llama 3.2, achieving 90 tokens/sec via prompt tuning on RTX 3050",
-  "Engineered a custom agent runtime with decorator-based registry (14 tools) and loop-detection guards",
-  "Architected and shipped a full-stack course management platform for 1,000+ users, owning system design end-to-end",
+  "Engineered a 10-stage NLP pipeline processing tweets end-to-end at 75ms per tweet across 5 model stages.",
+  "Architected a 6-tool ReAct agent runtime with decorator-based auto-registration, enforcing guards across 9 intent categories.",
+  "Optimized SQLite query performance through 15+ strategic indexes resulting in sub-3ms P95 latency across all core tables.",
+  "Engineered a dual AI detection engine combining RoBERTa-large-openai-detector and DetectGPT with a custom 400-word chunking strategy."
 ]
 # ↑ Extracted from your actual resume bullets
 
@@ -235,9 +201,9 @@ samples = [
 # ══════════════════════════════════════════════════════════════
 
 [[numbers]]
-team_sizes_worked_with  = "solo / 2-person"
-latency_improvements    = "~40% API latency reduction, sub-10ms retrieval, <1ms lookups (7x speedup), ~2ms API latency"
-throughput_numbers      = "90 tokens/sec, 500+ texts/sec, ~450 req/sec, 1,000+ records in under 2ms"
-scale_numbers           = "1,000+ users, 14 tools, 8+ domain models, 20+ React components, 4-model NLP pipeline"
-coverage_numbers        = ">85% test coverage"
-engagement_numbers      = "~25% improvement in client engagement"
+team_sizes_worked_with  = "solo / 3-person team"
+latency_improvements    = "75ms per tweet end-to-end, 190ms semantic search, 2.61ms avg SQLite retrieval, 2.17ms average API response sub-3ms P95 SQLite latency"
+throughput_numbers      = "90 tokens/sec, 484 texts/sec, 45+ endpoints, 50 test files"
+scale_numbers           = "10-stage NLP pipeline, 6-tool ReAct agent, 15+ strategic DB indexes, 5-model inference stack, 8-stage async pipeline, 400-word chunking"
+coverage_numbers        = "Jest across 50 test files, weighted scoring 70/30, 20% exploration injection"
+engagement_numbers      = "0.60-0.70 text tracking thresholds, |score| > 0.7 high polarity mapping"

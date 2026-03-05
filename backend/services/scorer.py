@@ -1,114 +1,135 @@
 import re
+import json
 
 from backend.services.llm_client import get_llm_client, get_model_name, get_settings
 
-AUTO_SHORTLIST = 0.35   # was 0.45
-AUTO_SKIP = 0.25        # was 0.20
 
-def parse_llm_response(content: str) -> tuple[int, str]:
-    """Parse the LLM response to ensure we always get a valid int score and string reason."""
+def parse_llm_json_response(content: str) -> tuple[int, str]:
+    """Parse structured JSON from the LLM. Falls back to regex extraction."""
+    # ── Try direct JSON parse ──
     try:
-        # Expected format from LLM:
-        # Score: 8
-        # Reason: The job aligns well...
-        
-        score_match = re.search(r"Score:\s*(\d+)", content, re.IGNORECASE)
-        reason_match = re.search(r"Reason:\s*(.*)", content, re.IGNORECASE | re.DOTALL)
-        
-        score_num = int(score_match.group(1)) if score_match else 0
-        # Clamp score between 1 and 10
-        score = max(1, min(10, score_num))
-        
-        reason = reason_match.group(1).strip() if reason_match else content.strip()
-        
-        if not score_match:
-            # Fallback if no specific format exists
-            # We will just look for the first number it spits out
-            fst_num = re.search(r"\b([1-9]|10)\b", content)
-            if fst_num:
-                score = int(fst_num.group(1))
-            else:
-                score = 1
-                
-        return score, reason
-    except Exception as e:
-        print(f"Error parsing score from LLM response: {e}")
-        return 1, "Failed to parse reasoning from LLM."
+        # Strip markdown fences if present
+        cleaned = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
+        data = json.loads(cleaned)
+        score = int(data.get("score", 0))
+        reasoning = str(data.get("reasoning", ""))
+        return max(0, min(10, score)), reasoning
+    except (json.JSONDecodeError, ValueError, TypeError):
+        pass
+
+    # ── Fallback: regex extraction ──
+    score_match = re.search(r'"score"\s*:\s*(\d+)', content)
+    reason_match = re.search(r'"reasoning"\s*:\s*"([^"]*)"', content, re.DOTALL)
+
+    score = int(score_match.group(1)) if score_match else 0
+    score = max(0, min(10, score))
+    reason = reason_match.group(1).strip() if reason_match else content.strip()[:300]
+
+    if not score_match:
+        # Last resort: find any number
+        fst = re.search(r"\b(\d{1,2})\b", content)
+        score = int(fst.group(1)) if fst else 0
+        score = max(0, min(10, score))
+
+    return score, reason
 
 
 def _llm_score(job: dict, profile: dict) -> tuple[int, str]:
-    """Call LLM to score the job match."""
+    """
+    Call LLM with a rigid deduction-based rubric.
+    Temperature = 0.0, JSON mode forced.
+    """
     client = get_llm_client()
     model_name = get_model_name()
-    
-    # Combined profile info
-    profile_summary = f"""
-Candidate Target Roles: {profile.get('target_roles', 'Not specified')}
-Candidate Key Skills: {profile.get('skills', 'Not specified')}
-Candidate Experience Level: {profile.get('experience_level', 'Not specified')}
-Candidate Preferences: {profile.get('preferences', 'Not specified')}
-"""
 
-    job_description_snippet = job.get('description', '')
-    if len(job_description_snippet) > 10000:
-        job_description_snippet = job_description_snippet[:10000]
+    profile_summary = f"""Candidate Target Roles: {profile.get('target_roles', 'N/A')}
+Candidate Key Skills: {profile.get('skills', 'N/A')}
+Candidate Experience Level: {profile.get('experience_level', 'N/A')}
+Candidate Preferences: {profile.get('preferences', 'N/A')}
+Candidate Visa Status: Requires sponsorship (F-1 student, OPT/CPT or H1B)"""
 
-    job_summary = f"""
-Company: {job.get('company')}
-Job Title: {job.get('title')}
-Description: {job_description_snippet}
-"""
+    jd_text = job.get('description', '')
+    if len(jd_text) > 10000:
+        jd_text = jd_text[:10000]
 
-    system = """You are a resume-job fit evaluator.
-Score this internship/new grad job from 1-10 for
-this specific candidate.
+    job_summary = f"""Company: {job.get('company', 'Unknown')}
+Job Title: {job.get('title', 'Unknown')}
+Description: {jd_text}"""
 
-SCORING RULES:
+    system = r"""You are a deterministic job-fit scoring engine.
+You MUST follow the BASE-10 DEDUCTION RUBRIC exactly.
+Do NOT guess. Calculate the score mechanically.
 
-STEP 1 — Company domain check (apply FIRST):
-  Quant trading / hedge fund (Two Sigma, DE Shaw,
-  Jane Street, Citadel, Tower Research, SIG):
-    → max score 4, even if they use ML/Python
-  Legal tech company:
-    → max score 3
-  Finance/banking (Goldman, JPMorgan, etc):
-    → max score 4 unless explicitly software team
-  Non-tech company (retail, food, healthcare):
-    → max score 5
-  Pure software / AI / ML company:
-    → score normally, no cap
+═══════════════════════════════════════════
+         BASE-10 DEDUCTION RUBRIC
+═══════════════════════════════════════════
 
-STEP 2 — Role level check:
-  Requires 3+ years experience → score 1
-  Requires specific hardware/embedded skills
-  candidate doesn't have → score 2
-  Clearly intern/new grad level → continue
+START at 10/10. Apply deductions in order:
 
-STEP 3 — Skills match check:
-  Strong match (LLM/RAG/Python/FastAPI/React) → 8-10
-  Partial match (some overlap) → 5-7
-  Weak match (different domain) → 3-4
-  No match → 1-2
+STEP 1 — AUTO-REJECT (score becomes 0 immediately):
+  • Job explicitly requires US Citizenship or
+    Security Clearance → SCORE 0.
+  • Job is Senior / Staff / Principal / Lead /
+    Manager / Director level → SCORE 0.
+  If either auto-reject fires, stop here.
 
-SCORING SCALE:
-  9-10: Perfect fit — AI/ML/SWE intern at tech company,
-        strong skills overlap
-  7-8:  Good fit — SWE intern, decent skills overlap
-  5-6:  Borderline — some overlap, worth applying
-  3-4:  Poor fit — wrong domain or weak skills match
-  1-2:  Skip — quant/finance/wrong level/no match
+STEP 2 — EXPERIENCE GAP:
+  • Job requires 3-4 years experience →  -2
+  • Job requires 5+ years experience  →  -3
+  • Job is explicitly intern/new-grad  →  -0
 
-Return EXACTLY in this format (no other text):
-Score: X
-Reason: one sentence explanation"""
+STEP 3 — CORE TECH STACK MISMATCH:
+  For each REQUIRED technology the candidate
+  is MISSING (not just "nice to have"):
+  • Missing 1 core tech → -1
+  • Missing 2 core techs → -2
+  • Missing 3+ core techs → -3 (cap)
+  Only count technologies the JD marks as
+  "required" or "must-have", not "preferred".
 
-    prompt = f"""
-Candidate Profile:
+STEP 4 — DOMAIN PENALTY:
+  • Quant trading / hedge fund → -4
+  • Legal tech → -5
+  • Non-tech company (retail, food, pharma
+    with no software team mentioned) → -3
+  • Finance/banking (unless explicitly
+    software engineering team) → -3
+  • Pure software/AI/ML company → -0
+
+STEP 5 — ROLE RELEVANCE BONUS (add back):
+  • Role title matches candidate's target
+    roles exactly → +1
+  • Role involves AI/ML/LLM work → +1
+  (Max total score is still capped at 10)
+
+FINAL SCORE = max(0, min(10, result))
+
+═══════════════════════════════════════════
+              OUTPUT FORMAT
+═══════════════════════════════════════════
+Return ONLY valid JSON. No other text.
+{
+  "reasoning": "Started at 10. [deduction/bonus from Step X for ACTUAL reason]. [another deduction]. Final: [calculated number].",
+  "score": [integer 0-10]
+}
+
+CRITICAL INSTRUCTION: DO NOT COPY ANY EXAMPLE TEXT.
+YOU MUST READ THE ACTUAL PROVIDED JOB DESCRIPTION
+AND CANDIDATE PROFILE, THEN CALCULATE THE SCORE
+BASED SOLELY ON THE REAL DATA. EVERY DEDUCTION IN
+YOUR REASONING MUST REFERENCE A SPECIFIC FACT FROM
+THE JOB DESCRIPTION OR CANDIDATE PROFILE. IF NO
+DEDUCTION APPLIES FOR A STEP, SKIP IT — DO NOT
+INVENT DEDUCTIONS."""
+
+    prompt = f"""Candidate Profile:
 {profile_summary}
 
 Job Details:
 {job_summary}
-"""
+
+Apply the deduction rubric and return JSON."""
 
     try:
         response = client.chat.completions.create(
@@ -118,46 +139,71 @@ Job Details:
                 {"role": "user", "content": prompt}
             ],
             temperature=0.0,
-            max_tokens=200
+            max_tokens=300,
+            response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content
-        return parse_llm_response(content)
+        return parse_llm_json_response(content)
     except Exception as e:
-        print(f"LLM request error: {e}")
+        # If response_format isn't supported (some Ollama models), retry without it
+        if "response_format" in str(e) or "json" in str(e).lower():
+            try:
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=0.0,
+                    max_tokens=300,
+                )
+                content = response.choices[0].message.content
+                return parse_llm_json_response(content)
+            except Exception as e2:
+                print(f"[SCORER] LLM retry failed: {e2}")
+                return 0, f"Error calling LLM: {str(e2)}"
+        print(f"[SCORER] LLM request error: {e}")
         return 0, f"Error calling LLM: {str(e)}"
 
 
 def score_job(job: dict, profile: dict) -> tuple[int, str]:
     """
-    Score a job using local heuristics then an LLM call.
+    Score a job using local heuristics (fast pre-checks) then the LLM rubric.
     Returns (score: int, reason: str)
     """
-    # Placeholder for keyword match stage (if any)
-    # (Actually we'll just implement the pre-check here as requested)
-
+    # ── Fast pre-check: known quant firms ──
     QUANT_FIRMS = {
         "two sigma", "de shaw", "jane street",
         "citadel", "tower research", "sig",
         "virtu", "akuna", "optiver", "imc",
         "hudson river trading", "jump trading",
-        "renaissance", "millenium", "point72"
+        "renaissance", "millennium", "point72"
     }
-    
-    company_lower = job.get("company","").lower()
-    
-    if any(firm in company_lower 
-           for firm in QUANT_FIRMS):
-        return 3, "QUANT_FIRM: Score capped at 3"
 
+    company_lower = job.get("company", "").lower()
+    if any(firm in company_lower for firm in QUANT_FIRMS):
+        return 2, "[PRE-CHECK] Quant firm — auto-capped at 2."
+
+    # ── Fast pre-check: seniority in title ──
+    title_lower = job.get("title", "").lower()
+    SENIOR_SIGNALS = ["senior", "staff", "principal", "lead", "manager", "director", "vp ", "head of"]
+    if any(sig in title_lower for sig in SENIOR_SIGNALS):
+        # Exception: "Senior Intern" is fine (some companies use that)
+        if "intern" not in title_lower:
+            return 0, "[PRE-CHECK] Senior/Staff/Lead role — auto-rejected."
+
+    # ── LLM scoring with deduction rubric ──
     score, reason = _llm_score(job, profile)
 
+    # ── Post-adjustment: sponsorship bonus ──
     if job.get("is_sponsored") and get_settings().get("visa_status") == "prefer_sponsorship":
-        score = min(10, score + 2)
+        score = min(10, score + 1)
         reason = "[SPONSORED] " + reason
-        
+
     return score, reason
 
-# A quick helper block for local testing
+
+# ── Local testing ──
 if __name__ == "__main__":
     test_job = {
         "title": "Machine Learning Intern",
@@ -165,11 +211,12 @@ if __name__ == "__main__":
         "description": "We are looking for an ML Intern to work on large language models. Require PyTorch and Python experience. Summer 2026."
     }
     test_profile = {
-         "target_roles": "ML Intern, AI Intern, SWE Intern",
-         "skills": "Python, PyTorch, LangChain, Kubernetes",
-         "experience_level": "Masters student, looking for Summer Internship",
-         "preferences": "AI/ML focus, remote or relocated"
+        "target_roles": "ML Intern, AI Intern, SWE Intern",
+        "skills": "Python, PyTorch, LangChain, Kubernetes",
+        "experience_level": "Masters student, looking for Summer Internship",
+        "preferences": "AI/ML focus, remote or relocated"
     }
-    score, reason = score_job(test_job, test_profile)
-    print(f"Score: {score}/10")
-    print(f"Reason: {reason}")
+    s, r = score_job(test_job, test_profile)
+    print(f"Score: {s}/10")
+    print(f"Reason: {r}")
+

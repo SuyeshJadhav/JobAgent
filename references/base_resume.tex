@@ -1,5 +1,5 @@
 \documentclass[letterpaper,10pt]{article}
-\usepackage[margin=0.5in]{geometry}
+\usepackage[margin=0.4in]{geometry}
 \usepackage{enumitem}
 \usepackage{hyperref}
 \usepackage{titlesec}
@@ -9,12 +9,13 @@
 
 \input{custom-commands.tex}
 
-\setlength{\parskip}{2pt}
-\setlength{\itemsep}{1pt}
+\setlength{\parskip}{1pt}
+\setlength{\itemsep}{0pt}
 
 % ── Formatting ─────────────────────────────────────────────
+\titlespacing{\section}{0pt}{4pt}{2pt}
 \titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
-\setlist[itemize]{noitemsep, topsep=1pt, leftmargin=*, parsep=0pt}
+\setlist[itemize]{noitemsep, topsep=0pt, leftmargin=*, parsep=0pt}
 \hypersetup{colorlinks=true, urlcolor=blue}
 \pagestyle{empty}
 
@@ -24,7 +25,7 @@
 %% BEGIN HEADER %%
 % ══════════════════════════════════════════════════════════
 \begin{center}
-  {\LARGE \textbf{Suyesh Manik Jadhav}} \\[4pt]
+  {\LARGE \textbf{Suyesh Manik Jadhav}} \\[2pt]
   \href{mailto:smjadha2@ncsu.edu}{smjadha2@ncsu.edu} \quad | \quad
   \href{https://linkedin.com/in/suyeshjadhav}{LinkedIn} \quad | \quad
   \href{https://github.com/SuyeshJadhav}{GitHub} \quad | \quad
@@ -66,33 +67,33 @@ MCS student at NC State specializing in AI systems and distributed applications,
 
   \resumeProjectHeading
     {\textbf{AI Assistant} $|$ \emph{Python, FastAPI, Llama 3.2, ChromaDB, SQLite, React Native}}{\projectLink{https://github.com/SuyeshJadhav/AI_Assistant}}
-  %% BEGIN PROJECTS: AI Assistant %%
   \resumeItemListStart
+  %% BEGIN PROJECTS: AI Assistant %%
     \resumeItem{Built a \imp{production-grade local LLM system} using \imp{Ollama + Llama 3.2}, achieving \imp{90 tokens/sec} via prompt tuning, batching, and GPU offloading on RTX 3050.}
     \resumeItem{Engineered a \imp{custom agent runtime} with deterministic tool execution, decorator-based registry (\imp{14 tools}), and \imp{loop-detection guards} — eliminating infinite reasoning cycles in multi-step tasks.}
     \resumeItem{Designed a \imp{hybrid memory architecture} combining \imp{SQLite} (WAL mode for structured state) and \imp{ChromaDB} (semantic recall), enabling sub-10ms retrieval with controlled prompt growth.}
-  \resumeItemListEnd
   %% END PROJECTS: AI Assistant %%
+  \resumeItemListEnd
 
   \resumeProjectHeading
     {\textbf{TweetScape} $|$ \emph{Python, FastAPI, React, D3.js, Transformers, UMAP, Playwright}}{\projectLink{https://github.com/SuyeshJadhav/tweetscape}}
-  %% BEGIN PROJECTS: TweetScape %%
   \resumeItemListStart
+  %% BEGIN PROJECTS: TweetScape %%
     \resumeItem{Built a real-time social media analysis platform using \imp{FastAPI} and \imp{React 19}, orchestrating a \imp{4-model NLP pipeline} (sentiment, clustering, embedding, classification) at \imp{500+ texts/sec}.}
     \resumeItem{Reduced dimensionality from \imp{384D $\rightarrow$ 2D} using \imp{UMAP} for interactive \imp{D3.js} cluster visualization; cut repeated computation via \imp{SQLite caching} achieving \imp{$<$1ms lookups} (\imp{7x speedup}).}
     \resumeItem{Engineered a \imp{Playwright scraper} with session persistence and bot-evasion, feeding a deduplication pipeline that processes \imp{1,000+ records in under 2ms}.}
-  \resumeItemListEnd
   %% END PROJECTS: TweetScape %%
+  \resumeItemListEnd
 
   \resumeProjectHeading
     {\textbf{WolfCafe+} $|$ \emph{React, Node.js, Express, MongoDB, Jest, CI/CD}}{\projectLink{https://github.com/SuyeshJadhav/WrikiCafePlus}}
-  %% BEGIN PROJECTS: WolfCafe+ %%
   \resumeItemListStart
+  %% BEGIN PROJECTS: WolfCafe+ %%
     \resumeItem{Architected \imp{8+ domain models} with \imp{MongoDB aggregation pipelines}, achieving \imp{$\sim$2ms API latency} and \imp{$\sim$450 req/sec} under load.}
     \resumeItem{Built \imp{20+ reusable React components} with \imp{optimistic UI updates}, eliminating perceived latency during async state transitions.}
     \resumeItem{Secured APIs with \imp{JWT auth} and enforced reliability via \imp{Jest/Supertest} suite with \imp{$>$85\% coverage}, integrated into \imp{CI/CD} pipeline.}
-  \resumeItemListEnd
   %% END PROJECTS: WolfCafe+ %%
+  \resumeItemListEnd
 
 \resumeSubHeadingListEnd
 
@@ -104,24 +105,24 @@ MCS student at NC State specializing in AI systems and distributed applications,
   \resumeSubheading
     {Software Development Engineer Intern}{March 2024 -- August 2024}
     {KJSCE Software Development Cell, Mumbai, India}{}
-  %% BEGIN EXPERIENCE: KJSCE Software Development Cell %%
   \resumeItemListStart
+  %% BEGIN EXPERIENCE: KJSCE Software Development Cell %%
     \resumeItem{Architected and shipped a \imp{full-stack course management platform} for \imp{1,000+ users}, owning the system design, REST API design, database schema, and MERN implementation end-to-end.}
     \resumeItem{Optimized \imp{MongoDB aggregation pipelines} and query patterns, achieving \imp{$\sim$40\% reduction in API latency} across core data workflows.}
     \resumeItem{Established \imp{reusable component standards} and conducted code reviews, reducing frontend inconsistencies and improving long-term maintainability across the codebase.}
-  \resumeItemListEnd
   %% END EXPERIENCE: KJSCE Software Development Cell %%
+  \resumeItemListEnd
 
   \resumeSubheading
     {Full Stack Development Intern}{December 2023 -- February 2024}
     {Caarya Innovation Solutions, Mumbai, India}{}
-  %% BEGIN EXPERIENCE: Caarya Innovation Solutions %%
   \resumeItemListStart
+  %% BEGIN EXPERIENCE: Caarya Innovation Solutions %%
     \resumeItem{Built and shipped a \imp{customer-facing web platform} — dashboard, e-commerce flows, and internal tooling — as part of a \imp{2-person team} with zero prior documentation or design assets.}
     \resumeItem{Navigated \imp{frequent mid-project requirement changes} by decoupling frontend and backend concerns, translating ambiguous client feedback into stable, production-ready implementations.}
     \resumeItem{Drove \imp{$\sim$25\% improvement in client engagement} through rapid iteration on high-fidelity features, delivering under tight deadlines without compromising code quality.}
-  \resumeItemListEnd
   %% END EXPERIENCE: Caarya Innovation Solutions %%
+  \resumeItemListEnd
 
 \resumeSubHeadingListEnd
 

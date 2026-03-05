@@ -32,6 +32,61 @@ class GoogleSheetsManager:
             self._fallback_to_excel(row)
             return False
 
+    def get_existing_urls(self) -> set:
+        """Fetch all URLs already in the sheet (column 3) for deduplication."""
+        if self.client and self.sheet:
+            try:
+                urls = self.sheet.col_values(3)  # Column C = URL
+                return set(urls[1:])  # Skip header row
+            except Exception as e:
+                print(f"Error fetching existing URLs from Sheets: {e}")
+                return set()
+        # Fallback: read from Excel
+        try:
+            if EXCEL_FALLBACK.exists():
+                df = pd.read_excel(EXCEL_FALLBACK)
+                return set(df["URL"].dropna().tolist())
+        except Exception as e:
+            print(f"Error reading URLs from Excel fallback: {e}")
+        return set()
+
+    def batch_append_job_rows(self, jobs: list[dict]) -> dict:
+        """Batch-add jobs to the sheet, skipping duplicates by URL.
+
+        Each job dict must have: title, company, url, status, date_added.
+        Returns {"added": int, "skipped": int}.
+        """
+        existing_urls = self.get_existing_urls()
+        rows_to_add = []
+        skipped = 0
+
+        for job in jobs:
+            if job["url"] in existing_urls:
+                skipped += 1
+                continue
+            rows_to_add.append([
+                job["title"], job["company"], job["url"],
+                job["status"], job["date_added"]
+            ])
+            existing_urls.add(job["url"])  # Prevent intra-batch dupes
+
+        if not rows_to_add:
+            return {"added": 0, "skipped": skipped}
+
+        if self.client and self.sheet:
+            try:
+                self.sheet.append_rows(rows_to_add)
+                return {"added": len(rows_to_add), "skipped": skipped}
+            except Exception as e:
+                print(f"Error batch-appending to Google Sheets: {e}")
+                for row in rows_to_add:
+                    self._fallback_to_excel(row)
+                return {"added": len(rows_to_add), "skipped": skipped}
+        else:
+            for row in rows_to_add:
+                self._fallback_to_excel(row)
+            return {"added": len(rows_to_add), "skipped": skipped}
+
     def _fallback_to_excel(self, row):
         columns = ["Title", "Company", "URL", "Status", "Date Added"]
         try:

@@ -21,17 +21,7 @@ def load_profile_file(filename: str) -> str:
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
     return ""
-
-def normalize_url(url: str) -> str:
-    if not url:
-        return ""
-    # Strip query params
-    url = url.split("?")[0]
-    # Remove trailing slash
-    url = url.rstrip("/")
-    # Ignore http/https
-    url = url.replace("https://", "").replace("http://", "")
-    return url
+from backend.utils.url_matcher import find_job_by_url
 
 class AnswerRequest(BaseModel):
     url: Optional[str] = None
@@ -50,15 +40,7 @@ def get_sniper_answers(payload: AnswerRequest):
                 matched_job = j
                 break
     elif payload.url:
-        norm_incoming = normalize_url(payload.url)
-        for j in jobs:
-            link = j.get("apply_link", "")
-            if not link:
-                continue
-            norm_link = normalize_url(link)
-            if norm_link == norm_incoming or norm_link in norm_incoming or norm_incoming in norm_link:
-                matched_job = j
-                break
+        matched_job = find_job_by_url(jobs, payload.url)
                 
     if not matched_job:
         raise HTTPException(status_code=404, detail="Job not found in tracked jobs. Provide job_id.")
@@ -181,6 +163,11 @@ class CompleteRequest(BaseModel):
 
 @router.post("/complete")
 def complete_sniper_application(payload: CompleteRequest):
+    """
+    Mark a job as 'applied' and run the Strict Ephemeral Storage teardown.
+    Deletes ALL generated artifacts (PDF, .tex, job_details.json, aux files)
+    while keeping the lightweight CSV row for tracking history.
+    """
     jobs = get_jobs()
     matched_job = None
     
@@ -190,30 +177,66 @@ def complete_sniper_application(payload: CompleteRequest):
                 matched_job = j
                 break
     elif payload.url:
-        norm_incoming = normalize_url(payload.url)
-        for j in jobs:
-            link = j.get("apply_link", "")
-            if not link:
-                continue
-            norm_link = normalize_url(link)
-            if norm_link == norm_incoming or norm_link in norm_incoming or norm_incoming in norm_link:
-                matched_job = j
-                break
+        matched_job = find_job_by_url(jobs, payload.url)
                 
     if not matched_job:
         raise HTTPException(status_code=404, detail="Job not found in tracked jobs.")
         
     job_id = matched_job["job_id"]
-    update_job(job_id, status="applied", applied_date=datetime.now().isoformat())
     
-    # Clean up PDF
-    tailored_dir = Path("outputs/applications") / job_id
-    if tailored_dir.exists():
-        for pdf_file in tailored_dir.glob("*.pdf"):
-            try:
-                os.remove(pdf_file)
-                print(f"Deleted generated PDF: {pdf_file}")
-            except Exception as e:
-                print(f"Failed to delete {pdf_file}: {e}")
-                
-    return {"status": "success", "job_id": job_id, "message": "Application completed and cleaned up."}
+    # ─── State Update ────────────────────────────────────────────────
+    update_job(
+        job_id,
+        status="applied",
+        applied_date=datetime.now().isoformat(),
+        resume_path="",          # Clear stale path references
+        cover_letter_path="",
+    )
+    
+    # ─── The Shredder ────────────────────────────────────────────────
+    # We need to find ALL directories that belong to this job.
+    # Pattern 1: outputs/applications/{job_id}/  (from save_job_details)
+    # Pattern 2: outputs/applications/{Company}-{Role}-{Date}/  (from run_tailor)
+    #            These contain a job_details.json with the matching job_id.
+    
+    shredded_dirs = []
+    output_root = Path("outputs/applications")
+    
+    if output_root.exists():
+        for candidate_dir in output_root.iterdir():
+            if not candidate_dir.is_dir():
+                continue
+            
+            should_shred = False
+            
+            # Pattern 1: Folder named exactly as the job_id
+            if candidate_dir.name == job_id:
+                should_shred = True
+            
+            # Pattern 2: Folder contains a job_details.json with matching job_id
+            if not should_shred:
+                details_file = candidate_dir / "job_details.json"
+                if details_file.exists():
+                    try:
+                        with open(details_file, encoding="utf-8") as f:
+                            details = json.load(f)
+                        if details.get("job_id") == job_id:
+                            should_shred = True
+                    except Exception:
+                        pass
+            
+            if should_shred:
+                try:
+                    shutil.rmtree(candidate_dir)
+                    shredded_dirs.append(str(candidate_dir))
+                    print(f"[SHREDDER] Deleted: {candidate_dir}")
+                except Exception as e:
+                    print(f"[SHREDDER] Failed to delete {candidate_dir}: {e}")
+    
+    return {
+        "status": "applied_and_cleaned",
+        "job_id": job_id,
+        "shredded": shredded_dirs,
+        "message": f"Application recorded. {len(shredded_dirs)} artifact dir(s) destroyed.",
+    }
+

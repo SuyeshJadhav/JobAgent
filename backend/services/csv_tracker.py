@@ -1,6 +1,5 @@
 import csv
 import json
-import os
 from pathlib import Path
 from datetime import datetime
 
@@ -89,6 +88,17 @@ def update_job(job_id: str, **kwargs) -> bool:
                     )
                     kwargs.pop("status")
             
+            # Payload Starvation Defensive Guard
+            eval_status = kwargs.get("status", row.get("status", ""))
+            eval_score = int(kwargs.get("score", row.get("score", 0)))
+            if eval_status in ["rejected", "skipped"] or eval_score < 6:
+                kwargs.pop("description", None)
+                kwargs.pop("llm_reasoning", None)
+                if "description" in row:
+                    del row["description"]
+                if "llm_reasoning" in row:
+                    del row["llm_reasoning"]
+            
             for key, val in kwargs.items():
                 if key in COLUMNS:
                     row[key] = val
@@ -152,6 +162,10 @@ def save_job_details(job: dict) -> str:
     CSV stores path, not full description.
     Returns path to saved file.
     """
+    # Guard clause: only save details for shortlisted jobs (score >= 6)
+    if job.get('score', 0) < 6 or job.get('status') == 'rejected':
+        return ""
+
     folder = Path("outputs/applications") / job["job_id"]
     folder.mkdir(parents=True, exist_ok=True)
     
