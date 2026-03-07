@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.services.csv_tracker import get_jobs, load_job_details, update_job
+from backend.services.db_tracker import get_jobs, load_job_details, update_job
 from backend.services.llm_client import get_llm_client, get_model_name, get_settings
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
@@ -192,6 +192,9 @@ def complete_sniper_application(payload: CompleteRequest):
         resume_path="",          # Clear stale path references
         cover_letter_path="",
     )
+    
+    from backend.services.excel_formatter import sync_db_to_excel
+    sync_db_to_excel()
     
     # ─── The Shredder ────────────────────────────────────────────────
     # We need to find ALL directories that belong to this job.

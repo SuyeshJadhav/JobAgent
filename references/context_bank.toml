@@ -48,7 +48,7 @@ dates   = "December 2023 – February 2024"
 
   [[experience.project_1]]
   what_did_you_build    = "A customer-facing web platform — dashboard, e-commerce flows, and internal tooling"
-  tools_used            = "Full stack web (no specific stack listed)"
+  tools_used            = "MERN stack (MongoDB, Express, React, Node.js), REST APIs"
   what_problem_it_solved = "Company needed a customer-facing platform from zero"
   scale                 = "2-person team, zero prior documentation or design assets"
   your_specific_role    = "Built and shipped as part of a 2-person team with no docs or designs to start from"
@@ -77,17 +77,23 @@ what_does_it_do = """
 
   [[project.bullet_1]]
   what_did_you_build    = "A 10-stage NLP pipeline for end-to-end data processing"
-  tools_used            = "FastAPI, SentenceTransformers, RoBERTa, DistilRoBERTa, KeyBERT"
-  how_it_works          = "Scraped and deduplicated tweets before passing them through a heavy 5-model inference stack including sentiment, emotion, and clustering analysis"
-  metric                = "Processed tweets at 75ms per tweet across 5 models; SentenceTransformers evaluated at 484 texts/sec"
+  tools_used            = "FastAPI"
+  how_it_works          = "Pipeline architecture configured to ingest, deduplicate, embed, reduce, run sentiment and emotion extraction, cluster, parse keywords, persist, and cache"
+  metric                = "Processing tweets end-to-end at 75ms per tweet across 5 distinct model stages"
 
   [[project.bullet_2]]
-  what_did_you_build    = "An interactive force-directed visualization simulation"
-  tools_used            = "React 19, D3.js, UMAP, TF-IDF"
-  how_it_works          = "Reduced vector embeddings to 2D via UMAP and mapped sentiment polarities to specific visual nodes with collision physics, glow effects, and hover tooltips"
-  interesting_decision  = "Added glow effects specifically for high-polarity nodes (|score| > 0.7) to immediately capture user attention"
+  what_did_you_build    = "A 5-model NLP inference stack"
+  tools_used            = "SentenceTransformers, RoBERTa sentiment, DistilRoBERTa emotion, KeyBERT, TF-IDF"
+  how_it_works          = "Orchestrated these models and reduced output to 2D formats for visual rendering via UMAP"
+  metric                = "SentenceTransformers pushed 484 texts/sec"
 
   [[project.bullet_3]]
+  what_did_you_build    = "An interactive force-directed visualization simulation"
+  tools_used            = "React 19, D3.js, UMAP"
+  how_it_works          = "Reduced vector embeddings to 2D and mapped sentiment polarities to specific visual nodes with collision physics and hover tooltips"
+  interesting_decision  = "Added glow effects specifically for high-polarity nodes (|score| > 0.7) to immediately capture user attention"
+
+  [[project.bullet_4]]
   what_did_you_build    = "A smart caching layer and LLM query expansion implementation"
   tools_used            = "SQLite, Ollama Gemma"
   how_it_works          = "Cached SQLite query-results to short-circuit redundant scraping and model inference on repeated, overlapping topics"
@@ -104,22 +110,39 @@ what_does_it_do = """
 """
 
   [[project.bullet_1]]
-  what_did_you_build    = "A full multi-tool ReAct reasoning agent system"
-  tools_used            = "Python, FastAPI"
-  how_it_works          = "Built a comprehensive 6-tool runtime with decorator-based auto-registration, explicitly extracting docstrings/type-hints to block infinite reasoning recursion"
-  metric                = "Handled parameter coercion and enforced loop-detection guards across 9 intent categories"
+  what_did_you_build    = "A fully independent ReAct reasoning system from scratch"
+  tools_used            = "Python, FastAPI, React Native"
+  how_it_works          = "Evolved from a simple grocery reminder into a persistent memory manager configured with voice IO, calendar hooks, and a mobile UI"
 
   [[project.bullet_2]]
-  what_did_you_build    = "A dual-storage memory and caching system"
-  tools_used            = "SQLite, ChromaDB"
-  how_it_works          = "Split structured constraints onto SQLite and mapped deep context directly onto ChromaDB 384D semantic embeddings"
-  metric                = "Achieved 2.61ms avg SQLite retrieval latency (1,000+ rows) and 190ms semantic search; optimized via 15+ strategic SQLite indexes and WAL journaling to hit sub-3ms P95 latency"
+  what_did_you_build    = "A 6-tool deterministic ReAct agent runtime"
+  tools_used            = "Python"
+  how_it_works          = "Developed decorator-based auto-registration workflows that surgically abstract docstrings and type hints out at the logic level"
+  metric                = "Enforced parameter coercion and rigid loop-detection guards across 9 specific intent categories to forcefully eliminate infinite looping recursion"
 
   [[project.bullet_3]]
-  what_did_you_build    = "Hardware-aware backend with personality profiling"
+  what_did_you_build    = "A dual-storage memory and caching system"
+  tools_used            = "SQLite, ChromaDB"
+  how_it_works          = "Split structured constraints onto SQLite and mapped deep context directly onto ChromaDB 384-dimensional semantic embeddings"
+  metric                = "Achieved 2.61ms avg SQLite conversation retrieval (1,000+ rows) and 190ms semantic search times"
+  
+  [[project.bullet_4]]
+  what_did_you_build    = "Data-layer optimizations directly combating scaling lag"
+  tools_used            = "SQLite"
+  how_it_works          = "Profiled the storage logic entirely, embedding robust WAL journaling alongside mapped indexes targeting entities, states, sessions, and timestamps"
+  metric                = "Dropped API transaction latency directly to sub-3ms P95 overhead via 15+ strategic indexes"
+
+  [[project.bullet_5]]
+  what_did_you_build    = "Hardware-aware backend logic"
   tools_used            = "Ollama, Groq, OpenAI, Whisper"
-  how_it_works          = "Aggregated 4 backend providers while quantizing Whisper I/O. Added a personality engine profiling tone, persistence, and logic."
-  metric                = "Achieved 90 tokens/sec local inference on an RTX 3050; personality cached with rapid 5-minute TTL"
+  how_it_works          = "Aggregated 4 backend providers while quantizing Whisper audio IO down (int8/int8_float16)"
+  metric                = "Pushed 90 tokens/sec local inference running natively on a low profile RTX 3050"
+  
+  [[project.bullet_6]]
+  what_did_you_build    = "An adaptive personality inference engine"
+  tools_used            = "LLM profiling"
+  how_it_works          = "Modeled communication styles (formal/casual), verbosity choices, and logical persistence directly into a dedicated feedback table"
+  metric                = "Maintained low-latency via a tight 5-minute TTL profile cache"
 
 
 [[project]]
@@ -132,22 +155,34 @@ what_does_it_do = """
 """
 
   [[project.bullet_1]]
-  what_did_you_build    = "The entire backend suite alongside an ML recommendation engine"
+  what_did_you_build    = "The entire backend suite and admin analytical capabilities"
   tools_used            = "Node.js, Express, JWT"
   how_it_works          = "Programmed 10 distinct router modules and 11 controllers for managing all admin and transactional data via role-based access control and JWT"
-  metric                = "Maintained 45+ robust REST endpoints"
-
+  metric                = "Maintained 45+ robust REST endpoints operating in a 3-person team structure"
+  
   [[project.bullet_2]]
+  what_did_you_build    = "An ML hybrid recommendation engine"
+  tools_used            = "MongoDB, Node.js"
+  how_it_works          = "Architected filtering mapping collaborative, content similarity, temporal scoring, and popularity signals utilizing weights alongside per-category diversity capping"
+  metric                = "Safely incorporated a 20% randomized exploration injection pattern"
+
+  [[project.bullet_3]]
   what_did_you_build    = "A real-time hybrid group ordering system"
   tools_used            = "Socket.IO, Express"
   how_it_works          = "Returned HTTP response immediately, deferring room broadcast triggers, async socket dispatches, and email notifications to the background"
   metric                = "Supported 6-char share codes with isolated 2-hour session expiry logic"
 
-  [[project.bullet_3]]
+  [[project.bullet_4]]
   what_did_you_build    = "Extensive administrative analytics and heavy test automation"
-  tools_used            = "MongoDB, Jest, GitHub Actions, Codecov"
-  how_it_works          = "Used MongoDB aggregation for detailed time-series trends and sales, completely wrapping deployments with Jest configurations"
-  metric                = "Analytics pipelines hit a 2.17ms average API response across 100 iterations; ran tests across 50 individual test files on Node 20"
+  tools_used            = "MongoDB"
+  how_it_works          = "Configured MongoDB aggregation tracking item structures, top-5 sales, and specific missing-date time series logic with zero fills"
+  metric                = "Analytics pipelines hit a 2.17ms average API response across 100 benchmark iterations"
+  
+  [[project.bullet_5]]
+  what_did_you_build    = "An automated deployment test pipeline"
+  tools_used            = "Jest, GitHub Actions, Codecov"
+  how_it_works          = "Wrapped every PR sent towards main branches with stringent pipeline actions utilizing Node 20 architectures"
+  metric                = "Verified stability traversing 50 test files"
 
 
 [[project]]
@@ -162,48 +197,134 @@ what_does_it_do = """
   [[project.bullet_1]]
   what_did_you_build    = "An 8-stage asynchronous processing pipeline"
   tools_used            = "FastAPI, Next.js 14, asyncio"
-  how_it_works          = "Decoupled massive heavy GPU blocking ML sequences from standard networking upload requests via singleton caching and asyncio gathers"
-  metric                = "Smoothly directed upload, conversion, extracting, scraping, and NLP analysis via 14 endpoints and 3 distinct routers"
-
+  how_it_works          = "Smoothly directed upload, conversion, extracting, scraping, and NLP analysis via 14 endpoints and 3 distinct routers"
+  
   [[project.bullet_2]]
   what_did_you_build    = "A dual AI assessment and perturbation engine"
   tools_used            = "PyTorch, RoBERTa, DetectGPT"
-  how_it_works          = "Utilized RoBERTa-large-openai-detector and DetectGPT 5-perturbation analysis bridged over a deliberate 400-word chunking constraint logic to avoid NLP token limitations"
-  metric                = "Configured weighted logic using 70% average computation and 30% local peak assessments for precise results"
+  how_it_works          = "Utilized RoBERTa sequence classification alongside a DetectGPT 5-perturbation analysis bridged over a deliberate 400-word chunking strategy"
+  metric                = "Evaded rigid 512-token transformer constraints utilizing a strict 70% average computation against a 30% local peak weighting"
 
   [[project.bullet_3]]
-  what_did_you_build    = "Automated scraping and hybrid plagiarism systems"
-  tools_used            = "TF-IDF, all-MiniLM-L6-v2, arXiv API"
-  how_it_works          = "Combined TF-IDF alongside BERT semantics while actively querying arXiv to immediately fetch related document context"
-  metric                = "Scraped up to 5 papers automatically; applied document-type-specific thresholds at 0.60 to 0.70 via a strict 30/70 weighting distribution"
+  what_did_you_build    = "A hybrid plagiarism structure logic"
+  tools_used            = "TF-IDF, all-MiniLM-L6-v2"
+  how_it_works          = "Merged traditional TF-IDF lexical systems carrying a 30% metric against deep 384D BERT semantics"
+  metric                = "Minimized false positive reads via specialized 0.60 to 0.70 thresholds explicitly bound across 5 distinct category blocks"
+
+  [[project.bullet_4]]
+  what_did_you_build    = "Deep ML concurrency inference profiles"
+  tools_used            = "FastAPI, asyncio.gather"
+  how_it_works          = "Abstracted light frontend client upload connections away from extremely heavy NLP computation via singleton model cache structures and lazy loading"
+  
+  [[project.bullet_5]]
+  what_did_you_build    = "An automated scraping source extraction pipeline"
+  tools_used            = "arXiv API"
+  how_it_works          = "Built out internal intelligent keyword loops filtering 50+ stopwords while immediately hitting arXiv databases to fetch context"
+  metric                = "Pulled up to 5 papers automatically circumventing manual citation comparisons entirely"
 
 
+[[project]]
+name = "Acamedia"
+tools_used = "Flutter, NodeJS, ExpressJS, Firebase, Web Sockets, Gemini API"
+github_link = "https://github.com/SuyeshJadhav/acamedia"
 
-# ══════════════════════════════════════════════════════════════
-# YOUR WRITING VOICE (VERY IMPORTANT)
-# ══════════════════════════════════════════════════════════════
-# Paste 2-3 bullet points YOU personally wrote (not AI-generated).
-# The agent uses these to match your natural voice and phrasing rhythm.
+what_does_it_do = """
+  An interactive cross-platform educational chat application connecting students with teachers directly.
+"""
 
-[[voice_samples]]
-samples = [
-  "Engineered a 10-stage NLP pipeline processing tweets end-to-end at 75ms per tweet across 5 model stages.",
-  "Architected a 6-tool ReAct agent runtime with decorator-based auto-registration, enforcing guards across 9 intent categories.",
-  "Optimized SQLite query performance through 15+ strategic indexes resulting in sub-3ms P95 latency across all core tables.",
-  "Engineered a dual AI detection engine combining RoBERTa-large-openai-detector and DetectGPT with a custom 400-word chunking strategy."
-]
-# ↑ Extracted from your actual resume bullets
+  [[project.bullet_1]]
+  what_did_you_build    = "A seamless messaging and communication application"
+  tools_used            = "Flutter"
+  how_it_works          = "Deployed a fully cross-platform (iOS/Android) mobile interface allowing students to immediately contact educational staff"
+
+  [[project.bullet_2]]
+  what_did_you_build    = "An automated content moderation layer"
+  tools_used            = "Gemini API"
+  how_it_works          = "Integrated Gemini API capabilities directly into the messaging logic to automatically block and moderate inappropriate content"
+  metric                = "Significantly scaled platform privacy and compliance enforcement"
+
+  [[project.bullet_3]]
+  what_did_you_build    = "A real-time synchronization and notification backend"
+  tools_used            = "Node.js, ExpressJS, Firebase, Web Sockets"
+  how_it_works          = "Configured active Web Sockets and Firebase listeners to push robust multi-channel real-time notifications"
 
 
-# ══════════════════════════════════════════════════════════════
-# NUMBERS CHEAT SHEET
-# (rough estimates totally fine — the agent will say "~" or "approx")
-# ══════════════════════════════════════════════════════════════
+[[project]]
+name = "Online Bookstore Website"
+tools_used = "ReactJS, NodeJS, ExpressJS, MongoDb"
+github_link = "https://github.com/SuyeshJadhav/react-bookstore"
 
-[[numbers]]
-team_sizes_worked_with  = "solo / 3-person team"
-latency_improvements    = "75ms per tweet end-to-end, 190ms semantic search, 2.61ms avg SQLite retrieval, 2.17ms average API response sub-3ms P95 SQLite latency"
-throughput_numbers      = "90 tokens/sec, 484 texts/sec, 45+ endpoints, 50 test files"
-scale_numbers           = "10-stage NLP pipeline, 6-tool ReAct agent, 15+ strategic DB indexes, 5-model inference stack, 8-stage async pipeline, 400-word chunking"
-coverage_numbers        = "Jest across 50 test files, weighted scoring 70/30, 20% exploration injection"
-engagement_numbers      = "0.60-0.70 text tracking thresholds, |score| > 0.7 high polarity mapping"
+what_does_it_do = """
+  A full-stack e-commerce marketplace featuring comprehensive user authentication, live search utilities, and secure financial transactions.
+"""
+
+  [[project.bullet_1]]
+  what_did_you_build    = "An e-commerce front-end interface"
+  tools_used            = "React.js, Bootstrap"
+  how_it_works          = "Created an immediately responsive UI thoroughly tested on multiple display dimensions featuring shopping carts and search functionalities"
+
+  [[project.bullet_2]]
+  what_did_you_build    = "REST APIs for marketplace infrastructure"
+  tools_used            = "Node.js, ExpressJS"
+  how_it_works          = "Constructed isolated endpoints parsing catalog queries, issuing secure payments, and maintaining authentication sessions"
+
+  [[project.bullet_3]]
+  what_did_you_build    = "A highly optimized data layer"
+  tools_used            = "MongoDB"
+  how_it_works          = "Structured granular query optimization patterns and memory caching strategies"
+  metric                = "Boosted standard page load speeds by 30%"
+
+
+[[project]]
+name = "Hotel Booking Website"
+tools_used = "PHP, PostgreSQL, CSS, JavaScript, Bootstrap"
+github_link = "https://github.com/SuyeshJadhav/Hotel-Booking-Website"
+
+what_does_it_do = """
+  An intuitive hotel management platform equipping users with room browsing capabilities and robust reservation pipelines.
+"""
+
+  [[project.bullet_1]]
+  what_did_you_build    = "A direct booking logic system"
+  tools_used            = "PHP, PostgreSQL"
+  how_it_works          = "Implemented database connections translating user form data directly into hard-booked reservations"
+
+  [[project.bullet_2]]
+  what_did_you_build    = "A stylistic component interface"
+  tools_used            = "CSS, JavaScript, Bootstrap"
+  how_it_works          = "Styled the entire site utilizing deep framework elements, delivering a universally accessible customer experience"
+
+
+[[project]]
+name = "Pokémon Game"
+tools_used = "Java, Java Swing"
+github_link = "https://github.com/Aditya-Chandran/Pokemon-Game"
+
+what_does_it_do = """
+  A robust battle simulator drawing inspiration from Pokémon Ruby and Sapphire.
+"""
+
+  [[project.bullet_1]]
+  what_did_you_build    = "An escalating combat scaling engine"
+  tools_used            = "Java"
+  how_it_works          = "Programmed logic systems allowing 3v1 entity engagements where AI enemy statistics escalate synchronously across levels"
+
+  [[project.bullet_2]]
+  what_did_you_build    = "A hybrid interface application"
+  tools_used            = "Java Swing"
+  how_it_works          = "Bridged graphical user interactions natively through Java Swing, whilst ensuring the backend logic permitted full terminal execution fallback"
+
+
+[[project]]
+name = "ANA Music Player"
+tools_used = "Python, Tkinter"
+github_link = "https://github.com/Aditya-Chandrn/MP3-Player"
+
+what_does_it_do = """
+  A lightweight graphical desktop MP3 media center.
+"""
+
+  [[project.bullet_1]]
+  what_did_you_build    = "A navigational media GUI"
+  tools_used            = "Python, Tkinter"
+  how_it_works          = "Tied dynamic desktop windowing components directly to audio decoding libraries, implementing add-song logic and intuitive play/pause controls"

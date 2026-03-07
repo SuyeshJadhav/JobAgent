@@ -1,9 +1,10 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from backend.services.csv_tracker import (
+from backend.services.db_tracker import (
     get_jobs, get_job_by_id, 
-    update_job, get_stats, CSV_PATH
+    update_job, get_stats
 )
+from backend.services.excel_formatter import EXCEL_PATH
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/tracker", tags=["tracker"])
@@ -29,12 +30,12 @@ def patch_job_status(job_id: str, body: dict):
     return {"updated": True}
 
 @router.get("/export")
-def export_csv():
-    if not CSV_PATH.exists():
-        raise HTTPException(status_code=404, detail="CSV file not found")
+def export_excel():
+    if not EXCEL_PATH.exists():
+        raise HTTPException(status_code=404, detail="Excel file not found")
         
     return FileResponse(
-        path=CSV_PATH,
-        media_type="text/csv",
-        filename="tracked_jobs.csv"
+        path=EXCEL_PATH,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        filename="tracked_jobs.xlsx"
     )

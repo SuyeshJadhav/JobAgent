@@ -1,11 +1,66 @@
 <!DOCTYPE html>
 <html>
-<head><style>body{width:300px; padding:10px; font-family:sans-serif;} input, button{width:100%; margin-top:5px; padding:5px;}</style></head>
+<head>
+	<meta charset="utf-8">
+	<style>
+		body {
+			width: 260px;
+			margin: 0;
+			padding: 14px 12px;
+			background: #1e1b2e;
+			color: #fff;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+			overflow: hidden;
+		}
+		#jobagent-fam-badge {
+			font-size: 11px;
+			color: #a5b4fc;
+			text-align: center;
+			padding: 2px 0 4px 0;
+			letter-spacing: 0.5px;
+			border-bottom: 1px solid rgba(255,255,255,0.08);
+			margin-bottom: 8px;
+			font-weight: 500;
+		}
+		#jobagent-fam-actions {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+		}
+		button {
+			width: 100%;
+			border: none;
+			cursor: pointer;
+			padding: 10px 12px;
+			border-radius: 8px;
+			font-size: 13px;
+			font-weight: 600;
+			color: #fff;
+			transition: transform 0.15s ease, box-shadow 0.15s ease;
+			font-family: inherit;
+			letter-spacing: 0.2px;
+			box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+		}
+		button:hover:not(:disabled) {
+			transform: translateY(-1px);
+		}
+		button:disabled {
+			cursor: default;
+			opacity: 0.8;
+		}
+		#loading {
+			text-align: center;
+			color: #a5b4fc;
+			font-size: 12px;
+			margin: 10px 0;
+		}
+	</style>
+</head>
 <body>
-  <h3>JobAgent</h3>
-  <input type="text" id="jobId" placeholder="Enter Job ID">
-  <button id="fetchBtn">Fetch Job Data</button>
-  <div id="status" style="margin-top:10px; font-size:12px; color:gray;"></div>
-  <script src="popup.js"></script>
+	<div id="jobagent-fam-badge">JobAgent</div>
+	<div id="jobagent-fam-actions">
+		<div id="loading">Connecting to JobAgent...</div>
+	</div>
+	<script src="popup.js"></script>
 </body>
 </html>

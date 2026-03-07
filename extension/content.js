@@ -76,7 +76,7 @@ function injectReactSafeValue(element, value) {
 	element.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-function injectBase64File(fileInput, base64String, filename) {
+function injectStoredResume(fileInput, base64String, filename) {
 	try {
 		const bc = atob(base64String);
 		const bn = new Array(bc.length);
@@ -88,7 +88,6 @@ function injectBase64File(fileInput, base64String, filename) {
 		dt.items.add(file);
 		fileInput.files = dt.files;
 		fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-		console.log(`[JobAgent] Injected file: ${filename}`);
 		return true;
 	} catch (e) {
 		console.error('[JobAgent] File injection failed:', e);
@@ -188,7 +187,7 @@ async function handleSuggestClick(btn, inputEl, question) {
 				btn.textContent = '✅ Suggested';
 				if (answers.resume_base64 && !window._jaResumeInjected) {
 					const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
-					if (fi) { injectBase64File(fi, answers.resume_base64, answers.resume_filename || 'Resume.pdf'); window._jaResumeInjected = true; }
+					if (fi) { injectStoredResume(fi, answers.resume_base64, answers.resume_filename || 'Resume.pdf'); window._jaResumeInjected = true; }
 				}
 			} else { btn.textContent = '❌ Failed'; }
 		} else { btn.textContent = '❌ Error'; }
@@ -201,7 +200,7 @@ async function handleSuggestClick(btn, inputEl, question) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Possible UI states for the FAM:  untracked → tracked → tailored → applied
-const STATE = { UNTRACKED: 'untracked', TRACKED: 'tracked', TAILORED: 'tailored', APPLIED: 'applied' };
+const STATE = { UNTRACKED: 'untracked', TRACKED: 'tracked', TAILORED: 'tailored', PREVIEWED: 'previewed', APPLIED: 'applied' };
 
 window._ja = {
 	state: STATE.UNTRACKED,
@@ -216,25 +215,7 @@ window._ja = {
  *   2. chrome.storage.local cache (instant on SPA re-inject)
  */
 async function resolveState() {
-	// ── Tier 1: Check chrome.storage.local for fast SPA recovery ──
-	let cachedJobId = null;
-	try {
-		const stored = await chrome.storage.local.get(null);
-		for (const key of Object.keys(stored)) {
-			if (key.startsWith('tailored_') && stored[key] === true) {
-				cachedJobId = key.replace('tailored_', '');
-				break;
-			}
-		}
-	} catch (e) { /* storage unavailable, continue */ }
-
-	if (cachedJobId) {
-		window._ja.state = STATE.TAILORED;
-		window._ja.job = window._ja.job || { job_id: cachedJobId };
-		return;
-	}
-
-	// ── Tier 2: Backend truth via scoutCheckUrl ──
+	// ── Backend truth via scoutCheckUrl ──
 	try {
 		const res = await sendBgMessage('scoutCheckUrl', { url: window.location.href });
 		if (res && res.status === 200 && res.data && res.data.tracked) {
@@ -296,15 +277,16 @@ function buildFAM() {
 	const panel = document.createElement('div');
 	panel.id = 'jobagent-fam-panel';
 	Object.assign(panel.style, {
-		width: '220px', background: '#1e1b2e',
-		borderRadius: '12px 0 0 12px', padding: '14px 12px',
+		width: '0px', background: '#1e1b2e',
+		borderRadius: '12px 0 0 12px', padding: '14px 0',
 		display: 'flex', flexDirection: 'column', gap: '10px',
 		boxShadow: '-4px 4px 20px rgba(0,0,0,0.35)',
 		transition: 'width 0.25s ease, padding 0.25s ease, opacity 0.25s ease',
 		overflow: 'hidden',
+		opacity: '0',
 	});
 
-	let panelOpen = true;
+	let panelOpen = false;
 	toggle.addEventListener('click', () => {
 		panelOpen = !panelOpen;
 		if (panelOpen) {
@@ -394,24 +376,37 @@ function renderFAMActions() {
 		container.appendChild(btn);
 	}
 
-	// ── TRACKED: Show "Tailor Resume" ──
+	// ── TRACKED: Show "Tailor & Preview" ──
 	if (state === STATE.TRACKED) {
 		const btn = createFAMButton(
-			'ja-tailor', '📄 Tailor & Inject Resume',
+			'ja-tailor', '📄 Tailor & Preview Resume',
 			'linear-gradient(135deg, #8b5cf6, #7c3aed)', 'rgba(139,92,246,0.4)'
 		);
 		btn.addEventListener('click', handleTailorClick);
 		container.appendChild(btn);
 	}
 
-	// ── TAILORED: Show "Mark Applied" ──
-	if (state === STATE.TAILORED) {
-		const btn = createFAMButton(
-			'ja-applied', '🏁 Mark Applied',
-			'linear-gradient(135deg, #f59e0b, #d97706)', 'rgba(245,158,11,0.4)'
+	// ── TAILORED / PREVIEWED: Show "Preview" and "Inject" ──
+	if (state === STATE.TAILORED || state === STATE.PREVIEWED) {
+		const btnPreview = createFAMButton(
+			'ja-preview-btn', '🔍 Re-Preview PDF',
+			'linear-gradient(135deg, #6366f1, #4f46e5)', 'rgba(99,102,241,0.3)'
 		);
-		btn.addEventListener('click', handleMarkAppliedClick);
-		container.appendChild(btn);
+		btnPreview.addEventListener('click', () => {
+			if (window._ja.pendingResume) {
+				const blob = base64ToBlob(window._ja.pendingResume.base64);
+				const url = URL.createObjectURL(blob);
+				window.open(url, '_blank');
+			}
+		});
+		container.appendChild(btnPreview);
+
+		const btnInject = createFAMButton(
+			'ja-inject-btn', '💉 Inject & Apply',
+			'linear-gradient(135deg, #10b981, #059669)', 'rgba(16,185,129,0.4)'
+		);
+		btnInject.addEventListener('click', () => handleInjectClick(btnInject));
+		container.appendChild(btnInject);
 	}
 
 	// ── APPLIED: Show "Done" (disabled) ──
@@ -427,9 +422,9 @@ function renderFAMActions() {
 	}
 
 	// ── Always show "Mark Applied" as a secondary if tracked but not yet applied ──
-	if (state === STATE.TRACKED || state === STATE.TAILORED) {
+	if (state === STATE.TRACKED || state === STATE.TAILORED || state === STATE.PREVIEWED) {
 		// Only add if not already the primary
-		if (state === STATE.TRACKED) {
+		if (state === STATE.TRACKED || state === STATE.PREVIEWED || state === STATE.TAILORED) {
 			const btn2 = createFAMButton(
 				'ja-applied-secondary', '🏁 Mark Applied',
 				'linear-gradient(135deg, #f59e0b, #d97706)', 'rgba(245,158,11,0.3)'
@@ -515,24 +510,16 @@ async function handleTailorClick() {
 		const res = await sendBgMessage('tailorGenerate', payload);
 		if (res && res.status === 200 && res.data) {
 			const { resume_base64, filename, job_id } = res.data;
-			const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
 
-			if (fi && resume_base64) {
-				const ok = injectBase64File(fi, resume_base64, filename || 'Resume.pdf');
-				if (ok) {
-					btn.textContent = '✅ Resume Injected!';
-					btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
-					window._ja.resumeInjected = true;
-				} else {
-					btn.textContent = '❌ Injection Failed';
-				}
-			} else if (resume_base64) {
-				window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf' };
-				btn.textContent = '✅ Resume Ready';
-				btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
-			} else {
-				btn.textContent = '❌ No PDF';
-			}
+			window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf' };
+
+			// ── Open PDF in new tab automatically ──
+			const blob = base64ToBlob(resume_base64);
+			const url = URL.createObjectURL(blob);
+			window.open(url, '_blank');
+
+			btn.textContent = '✅ Resume Ready';
+			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
 
 			// ── Persist to chrome.storage.local ──
 			const jid = job_id || window._ja.job?.job_id;
@@ -540,22 +527,74 @@ async function handleTailorClick() {
 				try { chrome.storage.local.set({ [`tailored_${jid}`]: true }); } catch (e) { /* ok */ }
 			}
 
-			// Transition to TAILORED state
+			// Transition to PREVIEWED state
 			setTimeout(() => {
-				window._ja.state = STATE.TAILORED;
+				window._ja.state = STATE.PREVIEWED;
 				renderFAMActions();
-			}, 2000);
+			}, 1500);
 		} else if (res && res.status === 404) {
 			btn.textContent = '❌ Job Not Found';
-			setTimeout(() => { btn.textContent = '📄 Tailor & Inject Resume'; btn.disabled = false; }, 3000);
+			setTimeout(() => { btn.textContent = '📄 Tailor & Preview Resume'; btn.disabled = false; }, 3000);
 		} else {
 			btn.textContent = '❌ Error';
-			setTimeout(() => { btn.textContent = '📄 Tailor & Inject Resume'; btn.disabled = false; }, 3000);
+			setTimeout(() => { btn.textContent = '📄 Tailor & Preview Resume'; btn.disabled = false; }, 3000);
 		}
 	} catch (e) {
 		console.error('[JobAgent] Tailor error:', e);
 		btn.textContent = '❌ Error';
-		setTimeout(() => { btn.textContent = '📄 Tailor & Inject Resume'; btn.disabled = false; }, 3000);
+		setTimeout(() => { btn.textContent = '📄 Tailor & Preview Resume'; btn.disabled = false; }, 3000);
+	}
+}
+
+/** Helper to convert base64 to Blob */
+function base64ToBlob(base64, type = 'application/pdf') {
+	const bc = atob(base64);
+	const bn = new Array(bc.length);
+	for (let i = 0; i < bc.length; i++) bn[i] = bc.charCodeAt(i);
+	const ba = new Uint8Array(bn);
+	return new Blob([ba], { type });
+}
+
+async function handleInjectClick(btn) {
+	if (!window._ja.pendingResume) return;
+	const { base64, filename } = window._ja.pendingResume;
+	const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
+
+	if (fi) {
+		const ok = injectStoredResume(fi, base64, filename);
+		if (ok) {
+			btn.textContent = '✅ Injected!';
+			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+			window._ja.resumeInjected = true;
+			setTimeout(() => {
+				window._ja.state = STATE.PREVIEWED;
+				renderFAMActions();
+			}, 1500);
+		} else {
+			btn.textContent = '❌ Failed';
+		}
+	} else {
+		// Fallback to manual download for chatbot ATS (Paradox) or cross-origin iframes
+		alert('File upload field not found on this page. Downloading your tailored resume for manual drag-and-drop.');
+
+		const blob = base64ToBlob(base64);
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+
+		btn.textContent = '📥 Downloaded!';
+		btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+		window._ja.resumeInjected = true;
+
+		setTimeout(() => {
+			window._ja.state = STATE.PREVIEWED;
+			renderFAMActions();
+		}, 2000);
 	}
 }
 
@@ -603,23 +642,6 @@ async function handleMarkAppliedClick() {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * If a file input appears after the resume was already generated,
- * automatically inject the pending resume.
- */
-function tryInjectPendingResume() {
-	if (!window._ja.pendingResume || window._ja.resumeInjected) return;
-	const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
-	if (fi) {
-		const { base64, filename } = window._ja.pendingResume;
-		if (injectBase64File(fi, base64, filename)) {
-			window._ja.resumeInjected = true;
-			window._ja.pendingResume = null;
-			console.log('[JobAgent] Pending resume auto-injected into newly-appeared file input.');
-		}
-	}
-}
-
-/**
  * The MutationObserver serves two purposes:
  *   1. Detects when ATS SPA navigation destroys the FAM → re-injects it
  *   2. Continues decorating new textarea fields as they appear
@@ -630,15 +652,11 @@ function startObserver() {
 
 		// Re-inject FAM if it was destroyed by SPA navigation
 		if (!document.getElementById(FAM_ID)) {
-			console.log('[JobAgent] FAM destroyed by SPA navigation — re-injecting');
 			buildFAM();
 		}
 
 		// Continue decorating textareas
 		detectAndDecorateFields();
-
-		// Try pending resume injection
-		tryInjectPendingResume();
 	});
 
 	observer.observe(document.body, { childList: true, subtree: true });
@@ -660,5 +678,32 @@ async function init() {
 	// 4. Start the SPA-safe MutationObserver
 	startObserver();
 }
+
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+	if (request.action === 'get_fam_state') {
+		const container = document.getElementById('jobagent-fam-actions');
+		if (!container) { sendResponse({ enabled: false }); return; }
+		const badge = document.getElementById('jobagent-fam-badge');
+		const buttons = Array.from(container.querySelectorAll('button')).map(b => ({
+			id: b.id,
+			text: b.textContent,
+			disabled: b.disabled,
+			background: b.style.background,
+			color: b.style.color,
+			opacity: b.style.opacity,
+			cursor: b.style.cursor,
+			padding: b.style.padding,
+			fontSize: b.style.fontSize
+		}));
+		sendResponse({ enabled: true, badge: badge ? badge.textContent : 'JobAgent', buttons });
+		return true;
+	}
+	if (request.action === 'trigger_fam_btn') {
+		const btn = document.getElementById(request.btnId);
+		if (btn) btn.click();
+		sendResponse({ status: 'ok' });
+		return true;
+	}
+});
 
 window.addEventListener('load', init);

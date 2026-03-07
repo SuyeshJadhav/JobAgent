@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from backend.services.sheets_manager import GoogleSheetsManager
 from backend.services.job_sources import fetch_simplify_jobs
-from backend.services.excel_formatter import format_excel, sync_csv_to_excel
+from backend.services.excel_formatter import format_excel, sync_db_to_excel
 
 router = APIRouter(tags=["Tracking"])
 sheets_manager = GoogleSheetsManager()
@@ -97,9 +97,9 @@ def sync_github_jobs(
 
 @router.post("/format_excel")
 def format_excel_endpoint():
-    """Manual trigger to sync the tracked_jobs.csv into the format_excel spreadsheet."""
+    """Manual trigger to sync the tracked_jobs.db into the format_excel spreadsheet."""
     try:
-        sync_csv_to_excel("tracked_jobs.csv")
-        return {"status": "success", "message": "Synced tracked_jobs.csv to Excel."}
+        sync_db_to_excel()
+        return {"status": "success", "message": "Synced tracked_jobs.db to Excel."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

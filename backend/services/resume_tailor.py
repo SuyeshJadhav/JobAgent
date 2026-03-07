@@ -13,9 +13,8 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 REFERENCES_DIR = ROOT_DIR / "references"
 OUTPUT_DIR = ROOT_DIR / "outputs" / "applications"
 
-BASE_RESUME = REFERENCES_DIR / "base_resume.tex"
+BASE_RESUME = REFERENCES_DIR / "main.tex"
 CONTEXT_BANK = REFERENCES_DIR / "context_bank.toml"
-CUSTOM_COMMANDS = REFERENCES_DIR / "custom-commands.tex"
 
 def safe_filename(name: str) -> str:
     """Make string safe for filesystem."""
@@ -83,14 +82,6 @@ def _get_context_for_section(section_name: str, context_bank: dict) -> str:
 
     return "\n---\n".join(fragments) if fragments else ""
 
-def _get_voice_samples(context_bank: dict) -> str:
-    samples = []
-    for vs in context_bank.get("voice_samples", []):
-        s = vs.get("samples", [])
-        if isinstance(s, list):
-            samples.extend(s)
-    return "\n".join(f"- {s}" for s in samples) if samples else ""
-
 def extract_jd_keywords(jd_text: str) -> dict:
     system = (
         "You are a JD analysis engine. Extract structured keywords. Return ONLY valid JSON with keys: "
@@ -152,34 +143,28 @@ Think of yourself as a copy-editor, not a ghostwriter.
 
 <strict_rules>
 FORMATTING:
-- Preserve every \resumeItem{} wrapper exactly.
-- Preserve every \imp{} wrapper exactly.
-- Preserve \resumeItemListStart and \resumeItemListEnd if present.
+- Preserve every \bitem{} wrapper exactly.
 - Output ONLY valid LaTeX. No markdown. No conversational text.
-- Each bullet must be ≤ 120 characters of visible text content.
+- Each bullet must be ≤ 140 characters of visible text content.
 
-CONTENT INTEGRITY:
+CONTENT INTEGRITY & ANTI-HALLUCINATION (BREAKING THIS IS A FATAL ERROR):
 - Keep ALL numbers, percentages, and metrics EXACTLY as original.
 - Keep ALL tool/framework names EXACTLY as original.
 - Do NOT invent projects, tools, skills, or metrics.
 - Do NOT add \textbf{}, \section*, headers, or structural LaTeX.
 - Do NOT output preambles like "Here are the updated bullets:".
 - Do NOT output dummy examples like "Software Engineer, XYZ Corp" etc.
+- Do NOT reinvent and add random tools to the EXPERIENCE section bullets.
 
 TENSE & GRAMMAR LOCK (CRITICAL):
 - You MUST maintain the EXACT tense of the original bullet.
 - If the original uses past tense ("Architected", "Built", "Designed"),
   the tailored version MUST remain past tense.
 - Do NOT blindly copy present-tense verbs from the job description.
-  JD phrases like "Works on", "Supports", "Contributes to",
-  "Manages", "Maintains" describe the ROLE, not the candidate's PAST.
-  Convert them: "Supports" → "Reinforced", "Works on" → "Built".
 - NEVER change a past-tense bullet to present tense.
 
 VERB VARIETY:
 - NEVER start two consecutive bullets with the same verb.
-- BANNED verbs (never use): Support, Ensure, Deliver, Collaborate,
-  Assist, Help, Work on, Contribute, Maintain, Manage, Write.
 - PREFER strong past-tense verbs: Built, Engineered, Architected,
   Optimized, Designed, Implemented, Reduced, Accelerated, Shipped,
   Integrated, Developed, Orchestrated, Automated, Deployed, Refactored,
@@ -188,16 +173,19 @@ VERB VARIETY:
 LaTeX ESCAPING (CRITICAL):
 - C# → C\#     % → \%     & → \&     _ → \_     $ → \$
 - Always escape these characters in generated text.
+
+HIGHLIGHTING:
+- Use \textbf{...} for specific keyword emphasis inside a \bitem.
+- NEVER use the old \imp macro.
 </strict_rules>
 
 <output_format>
-Return ONLY \resumeItem{} lines (with \resumeItemListStart/End if
-they were in the input). One per line, no blank lines between them.
+Return ONLY \bitem{} lines. One per line, no blank lines between them.
 
 Example input:
-  \resumeItem{Built a \imp{RAG pipeline} using \imp{LangChain}, reducing query latency from \imp{5min to 30sec}.}
+  \bitem{Built a \textbf{RAG pipeline} using LangChain...}
 Example output (weaving "retrieval-augmented generation" keyword):
-  \resumeItem{Built a \imp{retrieval-augmented generation pipeline} using \imp{LangChain}, reducing query latency from \imp{5min to 30sec}.}
+  \bitem{Built a \textbf{retrieval-augmented generation pipeline} using LangChain...}
 </output_format>"""
 
     if is_retry:
@@ -205,11 +193,12 @@ Example output (weaving "retrieval-augmented generation" keyword):
 
     user_msg = f"""SECTION: {section_name}
 
-JD KEYWORDS TO WEAVE IN:
+JD KEYWORDS TO WEAVE IN (IF APPLICABLE):
 {kw_str}
 
 REAL CONTEXT (use ONLY these facts — no invention):
 {context_notes}
+FATAL RULE: If you cannot weave a keyword without inventing a programming language (like Angular, Java, C#, etc.) not explicitly listed in the REAL CONTEXT above, you MUST ignore the keyword entirely.
 
 ORIGINAL BULLETS (apply minimal keyword swaps, preserve structure):
 {current_text}
@@ -282,8 +271,8 @@ Return the updated skills lines now."""
     )
     result = sanitize_llm_latex(resp.choices[0].message.content.strip())
 
-    # Safety net: if the LLM still produced \resumeItem, reject and keep original
-    if r"\resumeItem" in result:
+    # Safety net: if the LLM still produced \bitem, reject and keep original
+    if r"\bitem" in result:
         print(f"[GUARD] Skills rewriter produced bullet points — rejecting, keeping original.")
         return current_text
     return result
@@ -313,12 +302,12 @@ def rewrite_bullets_with_validation(section_name: str, current_text: str, keywor
 def trim_bullets(current_text: str) -> str:
     system = r"""You are an expert LaTeX resume editor.
 The resume overflows to 2 pages. Your job: shorten each
-\resumeItem{} bullet by ~15 characters while keeping
-ALL numbers, metrics, and LaTeX macros (\imp{}, \resumeItem{})
+\bitem{} bullet by ~15 characters while keeping
+ALL numbers, metrics, and LaTeX macros (\textbf{}, \bitem{})
 perfectly intact.
 
 Rules:
-- Output ONLY the shortened \resumeItem{} lines.
+- Output ONLY the shortened \bitem{} lines.
 - Do NOT output preambles, comments, examples, or markdown.
 - Do NOT change any numbers or metric values.
 - Do NOT add new content or sections."""
@@ -335,12 +324,12 @@ Rules:
     return sanitize_llm_latex(resp.choices[0].message.content.strip())
 
 
-def _generate_tailored_content(job_description: str, sections: dict, context_bank: dict) -> dict:
+def _generate_tailored_content(job_description: str, sections: dict, context_bank: dict, strategy: str = "full_rewrite") -> dict:
     """
     Routes each section to the appropriate rewriter:
     - HEADER / SUMMARY / EDUCATION → pass through (no changes)
     - SKILLS → dedicated keyword-only rewriter (no bullet conversion)
-    - PROJECTS / EXPERIENCE → surgical bullet keyword weaving
+    - PROJECTS / EXPERIENCE → surgical bullet keyword weaving (skipped if strategy is skills_only)
     """
     desc = job_description
     if len(desc) > 8000:
@@ -348,7 +337,7 @@ def _generate_tailored_content(job_description: str, sections: dict, context_ban
     
     keywords = extract_jd_keywords(desc)
 
-    SKIP_SECTIONS = {"HEADER", "SUMMARY", "EDUCATION"}
+    SKIP_SECTIONS = {"HEADER", "SUMMARY", "EDUCATION", "PROFESSIONAL SUMMARY"}
     rewritten = {}
 
     for section_name, sec_data in sections.items():
@@ -369,18 +358,25 @@ def _generate_tailored_content(job_description: str, sections: dict, context_ban
 
         # Projects / Experience → bullet keyword weaving
         if "PROJECTS" in sec_upper or "EXPERIENCE" in sec_upper:
-            print(f"Tailoring section (bullets mode): {section_name}")
-            rewritten[section_name] = rewrite_bullets_with_validation(
-                section_name, sec_data["content"], keywords, context_bank
-            )
+            if strategy == "skills_only":
+                print(f"Strategy: skills_only. Skipping rewrite for: {section_name}")
+                rewritten[section_name] = sec_data["content"]
+            else:
+                print(f"Tailoring section (bullets mode): {section_name}")
+                rewritten[section_name] = rewrite_bullets_with_validation(
+                    section_name, sec_data["content"], keywords, context_bank
+                )
             continue
 
         # Anything else with domain relevance
         if any(k.lower() in sec_upper.lower() for k in keywords.get("domain_focus", [])):
-            print(f"Tailoring section (bullets mode): {section_name}")
-            rewritten[section_name] = rewrite_bullets_with_validation(
-                section_name, sec_data["content"], keywords, context_bank
-            )
+            if strategy == "skills_only":
+                rewritten[section_name] = sec_data["content"]
+            else:
+                print(f"Tailoring section (bullets mode): {section_name}")
+                rewritten[section_name] = rewrite_bullets_with_validation(
+                    section_name, sec_data["content"], keywords, context_bank
+                )
         else:
             rewritten[section_name] = sec_data["content"]
 
@@ -507,18 +503,33 @@ def run_tailor(job: dict) -> dict:
     candidate_name = settings.get("candidate_name", "Suyesh Jadhav")
     safe_name = safe_filename(candidate_name)
 
+    from backend.services.db_tracker import _get_readable_job_dir
+    import shutil
+
     company = safe_filename(job.get("company", "Unknown"))
     role = safe_filename(job.get("title", "Unknown"))
     date_str = datetime.now().strftime("%Y-%m-%d")
 
-    folder_name = f"{company}-{role}-{date_str}"
-    target_dir = OUTPUT_DIR / folder_name
+    target_dir = _get_readable_job_dir(job)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Export job details json
     job["tailored_at"] = datetime.now().isoformat()
     with open(target_dir / "job_details.json", "w", encoding="utf-8") as f:
         json.dump(job, f, indent=2)
+
+    # Clean legacy UUID folder if it exists
+    job_id = job.get("job_id")
+    if job_id:
+        legacy_dir = OUTPUT_DIR / job_id
+        if legacy_dir.exists() and legacy_dir.is_dir() and legacy_dir != target_dir:
+            try:
+                shutil.rmtree(legacy_dir)
+            except Exception:
+                pass
+
+    if date_str: # Check kept for compatibility
+        pass
 
     refs = load_references()
     sections = parse_marker_sections(refs["base_resume_tex"])
@@ -527,7 +538,8 @@ def run_tailor(job: dict) -> dict:
     content = _generate_tailored_content(
         job_description=job.get("description", ""),
         sections=sections,
-        context_bank=refs["context_bank"]
+        context_bank=refs["context_bank"],
+        strategy=job.get("strategy", "full_rewrite")
     )
 
     # Step 2: Inject Content into LaTeX
@@ -536,9 +548,6 @@ def run_tailor(job: dict) -> dict:
         tailored_content=content,
         sections=sections
     )
-
-    if CUSTOM_COMMANDS.exists():
-        shutil.copy(CUSTOM_COMMANDS, target_dir / "custom-commands.tex")
 
     # Step 3: Handle compilation, retry flow, and output
     pdf_res = _compile_latex_to_pdf(
@@ -549,6 +558,16 @@ def run_tailor(job: dict) -> dict:
         tailored_content=content,
         template_str=refs["base_resume_tex"]
     )
+
+    # Step 4: Clean up the initial JD fetch folder 
+    job_id = job.get("job_id")
+    if job_id:
+        old_dir = OUTPUT_DIR / str(job_id)
+        if old_dir.exists() and old_dir.is_dir() and old_dir != target_dir:
+            try:
+                shutil.rmtree(old_dir)
+            except Exception as e:
+                print(f"[WARN] Failed to clean up initial fetch dir {old_dir}: {e}")
 
     return pdf_res
 

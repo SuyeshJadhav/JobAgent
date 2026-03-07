@@ -53,9 +53,9 @@ def add_job(job: dict) -> bool:
     Returns True if added, False if duplicate.
     """
     rows = _read_all()
-    existing_ids = {r["job_id"] for r in rows}
+    existing_ids = {r.get("job_id") for r in rows if r.get("job_id")}
     
-    if job["job_id"] in existing_ids:
+    if job.get("job_id") in existing_ids:
         return False
     
     row = {col: job.get(col, "") for col in COLUMNS}
@@ -74,7 +74,7 @@ def update_job(job_id: str, **kwargs) -> bool:
     updated = False
     
     for row in rows:
-        if row["job_id"] == job_id:
+        if row.get("job_id") == job_id:
             # Enforce forward-only status transitions
             if "status" in kwargs:
                 new_status = kwargs["status"]
@@ -117,14 +117,14 @@ def get_jobs(status: str = None) -> list[dict]:
     rows = _read_all()
     if status:
         rows = [r for r in rows 
-                if r["status"] == status]
+                if r.get("status") == status]
     return rows
 
 def get_job_by_id(job_id: str) -> dict | None:
     """Get single job by job_id"""
     rows = _read_all()
     for row in rows:
-        if row["job_id"] == job_id:
+        if row.get("job_id") == job_id:
             return row
     return None
 
@@ -156,17 +156,39 @@ def _can_transition(current: str, new: str) -> bool:
     except ValueError:
         return True
 
+import re
+
+def _safe_filename(name: str) -> str:
+    val = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', str(name))
+    return re.sub(r'_+', '_', val)
+
+def _get_readable_job_dir(job: dict) -> Path:
+    company = _safe_filename(job.get("company", "Unknown"))
+    title = _safe_filename(job.get("title", "Unknown"))
+    
+    date_str = ""
+    # Use the date we found it if available
+    found = job.get("found_at", "")
+    if found:
+        date_str = found[:10]
+    else:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+        
+    job_id = job.get("job_id", "")
+    short_id = job_id[:8] if job_id else "NoID"
+    
+    return Path("outputs/applications") / f"{company}-{title}-{date_str}-{short_id}"
+
 def save_job_details(job: dict) -> str:
     """
-    Save full JD text to local JSON.
+    Save full JD text to local JSON in a human-readable folder.
     CSV stores path, not full description.
     Returns path to saved file.
     """
-    # Guard clause: only save details for shortlisted jobs (score >= 6)
     if job.get('score', 0) < 6 or job.get('status') == 'rejected':
         return ""
 
-    folder = Path("outputs/applications") / job["job_id"]
+    folder = _get_readable_job_dir(job)
     folder.mkdir(parents=True, exist_ok=True)
     
     details_path = folder / "job_details.json"
@@ -176,13 +198,38 @@ def save_job_details(job: dict) -> str:
     return str(details_path)
 
 def load_job_details(job_id: str) -> dict | None:
-    """Load full JD from local JSON by job_id"""
-    details_path = (
-        Path("outputs/applications") / 
-        job_id / 
-        "job_details.json"
-    )
-    if not details_path.exists():
+    """Load full JD from local JSON by searching for job_id in directory name, or fallback to exact job_id folder."""
+    base = Path("outputs/applications")
+    if not base.exists():
         return None
-    with open(details_path, encoding="utf-8") as f:
-        return json.load(f)
+        
+    # 1. Fallback: Check if it was saved under the old raw job_id directory
+    legacy_path = base / job_id / "job_details.json"
+    if legacy_path.exists():
+        with open(legacy_path, encoding="utf-8") as f:
+            return json.load(f)
+
+    # 2. Search for readable folders containing the short job_id
+    short_id = job_id[:8] if len(job_id) >= 8 else job_id
+    for d in base.iterdir():
+        if d.is_dir() and short_id in d.name:
+            details_path = d / "job_details.json"
+            if details_path.exists():
+                with open(details_path, encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data.get("job_id") == job_id:
+                        return data
+                        
+    # 3. Fallback: Iterate all to be fully safe (expensive but works)
+    for d in base.iterdir():
+        if d.is_dir():
+            details = d / "job_details.json"
+            if details.exists():
+                try:
+                    with open(details, encoding="utf-8") as f:
+                        data = json.load(f)
+                        if data.get("job_id") == job_id:
+                            return data
+                except Exception:
+                    pass
+    return None

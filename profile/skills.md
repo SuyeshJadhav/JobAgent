@@ -17,5 +17,6 @@ VECTOR_DATABASES: ChromaDB, FAISS
 RAG_CONCEPTS: Retrieval Augmented Generation, AI Agents, Prompt Engineering
 NLP_TOOLS: spaCy, NLTK, BERTopic, UMAP
 DATA_COLLECTION: Playwright, BeautifulSoup, Scraping Pipelines
-CORE_AI: Neural Networks, Deep Learning, Reinforcement Learning, Fine-tuning, DetectGPT
+CORE_AI: Neural Networks, Deep Learning, Reinforcement Learning, Fine-tuning, RAG
 VISUALIZATION: D3.js, Matplotlib
+AGENTIC_TOOLS: MCP (Model Context Protocol), Claude (Anthropic), Gemini Flash/Pro, ChatGPT, Agentic Workflows

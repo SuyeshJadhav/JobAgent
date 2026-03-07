@@ -59,11 +59,14 @@ CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
 WRAP   = Alignment(horizontal="left", vertical="center", wrap_text=True)
 
 
-def sync_csv_to_excel(csv_path: str | Path, output_excel: Path = EXCEL_PATH):
-    csv_path = Path(csv_path)
-    if not csv_path.exists():
+from backend.services.db_tracker import get_jobs
+
+def sync_db_to_excel(output_excel: Path = EXCEL_PATH):
+    jobs = get_jobs()
+    if not jobs:
         return
-    df = pd.read_csv(csv_path)
+        
+    df = pd.DataFrame(jobs)
     df_mapped = pd.DataFrame()
     df_mapped["Title"] = df.get("title", "")
     df_mapped["Company"] = df.get("company", "")

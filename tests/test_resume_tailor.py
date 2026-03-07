@@ -108,9 +108,7 @@ def test_run_tailor_pipeline(
             "description": "Needs basic python."
         }
         
-        # Patch CUSTOM_COMMANDS with a fake path so that .exists() naturally returns False
-        with patch("backend.services.resume_tailor.CUSTOM_COMMANDS", tmp_path / "fake-custom-commands.tex"):
-            result = run_tailor(job)
+        result = run_tailor(job)
         
         # Assert sequence constraints
         mock_generate.assert_called_once()

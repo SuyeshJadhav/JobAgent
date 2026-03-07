@@ -2,16 +2,32 @@
 Shared URL normalization and matching utilities for all routers.
 Handles ATS-specific domain patterns (Workday, Greenhouse, Lever, Paradox, etc.)
 """
-from urllib.parse import urlparse
-
+from urllib.parse import urlparse, parse_qsl, urlencode
 
 def normalize_url(url: str) -> str:
-    """Strip protocol, query params, fragments, and trailing slashes."""
+    """Normalize domain and path while preserving critical job identification query params."""
     if not url:
         return ""
-    url = url.split("?")[0].split("#")[0].rstrip("/")
-    url = url.replace("https://", "").replace("http://", "")
-    return url
+    
+    # Ensure scheme for urlparse
+    if not url.startswith('http'):
+        url = 'https://' + url
+        
+    parsed = urlparse(url)
+    
+    # Keep important query params that might define the job (like paradox.ai uses job_id)
+    important_params = {'job_id', 'jobid', 'req', 'id', 'guid', 'gh_jid', 'job', 'j', 'jobv2'}
+    qs = parse_qsl(parsed.query)
+    kept_qs = [(k, v) for k, v in qs if k.lower() in important_params]
+    
+    new_query = urlencode(kept_qs)
+    
+    # Reconstruct url
+    norm = parsed.netloc + parsed.path.rstrip('/')
+    if new_query:
+        norm += '?' + new_query
+        
+    return norm.lower()
 
 
 def extract_ats_domain(url: str) -> str:
@@ -69,14 +85,8 @@ def urls_match(url_a: str, url_b: str) -> bool:
     if norm_a == norm_b:
         return True
 
-    # Tier 2: Substring containment (covers path prefixes)
+    # Tier 2: Substring containment (covers path prefixes, like adding /apply)
     if norm_a in norm_b or norm_b in norm_a:
-        return True
-
-    # Tier 3: ATS domain match (same company portal, different pages)
-    domain_a = extract_ats_domain(url_a)
-    domain_b = extract_ats_domain(url_b)
-    if domain_a and domain_b and domain_a == domain_b:
         return True
 
     return False

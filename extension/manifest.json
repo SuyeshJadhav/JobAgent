@@ -8,10 +8,7 @@
 		"storage"
 	],
 	"host_permissions": [
-		"http://localhost:8000/*",
-		"*://*.workday.com/*",
-		"*://*.greenhouse.io/*",
-		"*://*.lever.co/*"
+		"<all_urls>"
 	],
 	"action": {
 		"default_popup": "popup.html"

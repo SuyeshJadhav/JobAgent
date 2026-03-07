@@ -106,12 +106,23 @@ STEP 5 — ROLE RELEVANCE BONUS (add back):
 FINAL SCORE = max(0, min(10, result))
 
 ═══════════════════════════════════════════
+             TAILORING STRATEGY
+═══════════════════════════════════════════
+Based on the final score and JD requirements, select a strategy:
+• "skills_only": Output this if the candidate is a strong match (Score >= 7)
+  and primarily needs keyword alignment in the Skills section without
+  altering core project achievements.
+• "full_rewrite": Output this ONLY if the job requires deep surgical weaving
+  of keywords into the Experience/Projects bullets to be competitive.
+
+═══════════════════════════════════════════
               OUTPUT FORMAT
 ═══════════════════════════════════════════
 Return ONLY valid JSON. No other text.
 {
-  "reasoning": "Started at 10. [deduction/bonus from Step X for ACTUAL reason]. [another deduction]. Final: [calculated number].",
-  "score": [integer 0-10]
+  "reasoning": "...",
+  "score": [integer 0-10],
+  "strategy": "skills_only" | "full_rewrite"
 }
 
 CRITICAL INSTRUCTION: DO NOT COPY ANY EXAMPLE TEXT.
@@ -119,9 +130,7 @@ YOU MUST READ THE ACTUAL PROVIDED JOB DESCRIPTION
 AND CANDIDATE PROFILE, THEN CALCULATE THE SCORE
 BASED SOLELY ON THE REAL DATA. EVERY DEDUCTION IN
 YOUR REASONING MUST REFERENCE A SPECIFIC FACT FROM
-THE JOB DESCRIPTION OR CANDIDATE PROFILE. IF NO
-DEDUCTION APPLIES FOR A STEP, SKIP IT — DO NOT
-INVENT DEDUCTIONS."""
+THE JOB DESCRIPTION OR CANDIDATE PROFILE."""
 
     prompt = f"""Candidate Profile:
 {profile_summary}

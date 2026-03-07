@@ -1,0 +1,289 @@
+%======================================================
+%  SUYESH JADHAV — RESUME
+%  Clean single-file build. No spacing hacks.
+%  Compiler: pdflatex (Overleaf default)
+%======================================================
+\documentclass[9pt, letterpaper]{article}
+
+%------------------  PACKAGES  -----------------------
+\usepackage[
+  top=0.3in, bottom=0.3in,
+  left=0.5in,  right=0.5in
+]{geometry}
+\usepackage{fontenc}
+\usepackage{inputenc}
+\usepackage{microtype}           % better text fitting
+\usepackage{enumitem}            % list control
+\usepackage{titlesec}            % section formatting
+\usepackage{hyperref}            % links
+\usepackage{xcolor}              % colors
+\usepackage{parskip}             % paragraph spacing
+
+%------------------  HYPERLINK STYLE  ----------------
+\hypersetup{
+  colorlinks = true,
+  urlcolor   = black,
+  linkcolor  = black
+}
+
+%------------------  GLOBAL SPACING  -----------------
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\raggedbottom
+\raggedright
+
+%------------------  SECTION FORMAT  -----------------
+% Before: 8pt  |  After rule: 4pt  — consistent for all sections
+\titleformat{\section}
+  {\scshape\raggedright\large}
+  {}{0em}{}
+  [\color{black}\titlerule]
+\titlespacing*{\section}{0pt}{4pt}{2pt}
+
+%------------------  CUSTOM COMMANDS  ----------------
+
+% Outer list: wraps subheadings and project headings
+\newcommand{\outerListStart}{
+  \begin{itemize}[
+    leftmargin = 0pt,
+    label      = {},
+    topsep     = 1pt,
+    itemsep    = 2pt,
+    parsep     = 0pt
+  ]
+}
+\newcommand{\outerListEnd}{\end{itemize}}
+
+% Inner list: wraps bullet points under each entry
+\newcommand{\bulletListStart}{
+  \begin{itemize}[
+    leftmargin = 12pt,
+    label      = \textbullet,
+    topsep     = 1pt,
+    itemsep    = 0pt,
+    parsep     = 0pt
+  ]
+}
+\newcommand{\bulletListEnd}{\end{itemize}}
+
+% Single bullet item
+\newcommand{\bitem}[1]{
+  \item \small #1
+}
+
+% Experience / Education subheading: 4 args
+%   #1 Company/School  #2 Date
+%   #3 Role/Degree     #4 Location
+\newcommand{\subheading}[4]{
+  \item
+  \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+    \textbf{#1} & \small #2 \\
+    \textit{\small #3} & \textit{\small #4}
+  \end{tabular*}
+  \vspace{-2pt}
+}
+
+% Project heading: 2 args
+%   #1 Title | Tech stack   #2 Date
+\newcommand{\projectheading}[2]{
+  \item
+  \begin{tabular*}{\textwidth}{@{}l@{\extracolsep{\fill}}r@{}}
+    \small #1 & \small #2
+  \end{tabular*}
+  \vspace{-6pt}
+}
+
+%======================================================
+\begin{document}
+%======================================================
+
+%------------------  HEADER  -------------------------
+\begin{center}
+  {\LARGE \textbf{Suyesh Jadhav}}\\[4pt]
+  \small
+  +1-984-382-2189
+  $\,|\,$
+  \href{mailto:smjadha2@ncsu.edu}{smjadha2@ncsu.edu}
+  $\,|\,$
+  \href{https://linkedin.com/in/suyeshjadhav}{linkedin.com/in/suyeshjadhav}
+  $\,|\,$
+  \href{https://github.com/SuyeshJadhav}{github.com/SuyeshJadhav}
+\end{center}
+
+\vspace{1pt}
+
+%------------------  PROFESSIONAL SUMMARY  -----------
+\section{Professional Summary}
+
+\small
+Full-stack software engineer and Master of Computer Science student
+specializing in scalable backend architectures, NLP pipelines, and
+distributed systems. Proven ability to orchestrate high-throughput
+applications and optimize complex database queries for
+sub-millisecond latency.
+
+%------------------  EDUCATION  ----------------------
+\section{Education}
+
+\outerListStart
+
+  \subheading
+    {North Carolina State University (NCSU)}{August 2025 -- May 2027}
+    {Master of Computer Science (MCS) $|$ GPA: 3.7/4.0}{Raleigh, NC}
+
+  \subheading
+    {K.J. Somaiya College of Engineering}{August 2021 -- May 2025}
+    {B.Tech in Computer Engineering $|$ CGPA: 9.05/10.0}{Mumbai, India}
+
+\outerListEnd
+
+%------------------  TECHNICAL SKILLS  ---------------
+\section{Technical Skills}
+
+%% BEGIN SKILLS %%
+\outerListStart
+  \item \small
+  \textbf{Languages:}
+    Python, Go, Java, C++, JavaScript/TypeScript, SQL, Dart \\[2pt]
+  \textbf{Mobile \& Web:}
+    ReactJS, Node.js, Express.js, FastAPI, Spring Boot,
+    React Native, Flutter, HTML/CSS \\[2pt]
+  \textbf{Cloud \& DevOps:}
+    Firebase, Docker, GitHub Actions (CI/CD), Linux, Git \\[2pt]
+  \textbf{Databases \& Tools:}
+    MongoDB, PostgreSQL, SQLite, ChromaDB, TensorFlow, NLP
+\outerListEnd
+%% END SKILLS %%
+
+%------------------  PROJECTS  -----------------------
+\section{Projects}
+
+\outerListStart
+
+  % --- Project 1 ---
+  \projectheading
+    {\textbf{Personal AI Agent}
+     $\,|\,$ \textit{Python, FastAPI, SQLite, ChromaDB, Ollama, React Native}}
+    {Oct 2025 -- Feb 2026}
+  \bulletListStart
+  %% BEGIN PROJECT: Personal AI Agent %%
+    \bitem{Independently designed a personal AI agent from scratch to
+           solve daily-life tasks --- growing from a location-aware
+           grocery reminder into a full \textbf{ReAct reasoning system}
+           with persistent memory, voice I/O, calendar integration,
+           and a cross-platform mobile frontend.}
+    \bitem{Architected a \textbf{6-tool ReAct agent runtime} with
+           decorator-based auto-registration extracting docstrings and
+           type hints at registration time, enforcing parameter
+           coercion and loop-detection guards across 9 intent
+           categories to eliminate infinite reasoning cycles across
+           20+ API endpoints.}
+    \bitem{Engineered a \textbf{hybrid memory layer} combining SQLite
+           (2.61ms avg retrieval, sub-3ms P95 via 15+ indexes and WAL
+           journaling) with ChromaDB vector search (190ms over
+           384-dimensional embeddings) for structured and context-aware
+           recall at 1,000+ row scale.}
+    \bitem{Implemented an adaptive \textbf{personality engine} tracking
+           communication style, verbosity preferences, and topic
+           affinities --- learning from user corrections via a feedback
+           table and serving cached profiles under a 5-minute TTL for
+           low-latency personalization.}
+  %% END PROJECT: Personal AI Agent %%
+  \bulletListEnd
+
+  % --- Project 2 ---
+  \projectheading
+    {\textbf{WolfCafe+ -- Full-Stack Dining Platform}
+     $\,|\,$ \textit{React, Node.js, MongoDB, Socket.IO, GitHub Actions}}
+    {Aug 2025 -- Dec 2025}
+  \bulletListStart
+  %% BEGIN PROJECT: WolfCafe+ %%
+    \bitem{Led backend development in a 3-person team, independently
+           architecting the \textbf{ML recommendation engine} and
+           \textbf{admin analytics dashboard} within a platform
+           exposing 45+ REST endpoints secured via JWT and
+           role-based access control.}
+    \bitem{Built a \textbf{hybrid recommendation engine} combining
+           collaborative filtering, content-based similarity, temporal
+           scoring, and popularity signals (weights 0.4/0.3/0.2/0.1)
+           with 20\% exploration injection and per-category
+           diversity capping.}
+    \bitem{Implemented \textbf{MongoDB aggregation pipelines} for
+           admin analytics (items sold, time-series trends, top-5
+           products) with zero-fill for missing dates, benchmarked
+           at \textbf{2.17ms average API response} across 100
+           iterations.}
+    \bitem{Engineered real-time group ordering via \textbf{Socket.IO}
+           room broadcasts --- HTTP response returned first, with email
+           and socket notifications dispatched asynchronously ---
+           supporting 6-char share codes and 2-hour session expiry.}
+  %% END PROJECT: WolfCafe+ %%
+  \bulletListEnd
+
+  % --- Project 3 ---
+  \projectheading
+    {\textbf{TweetScape -- Social Media Analytics Platform}
+     $\,|\,$ \textit{React 19, FastAPI, D3.js, Transformers, SQLite}}
+    {December 2025}
+  \bulletListStart
+  %% BEGIN PROJECT: TweetScape %%
+    \bitem{Engineered a \textbf{10-stage NLP pipeline} orchestrating
+           data ingestion, deduplication, semantic embedding, and
+           sentiment clustering to process social media data
+           end-to-end at \textbf{75ms per tweet}.}
+    \bitem{Orchestrated a \textbf{5-model inference stack} ---
+           SentenceTransformers (484 texts/sec), RoBERTa sentiment,
+           DistilRoBERTa emotion, KeyBERT, and TF-IDF clustering ---
+           reduced to 2D via UMAP for interactive visualization.}
+    \bitem{Built a \textbf{React 19 + D3 force-directed simulation}
+           mapping sentiment polarity to spatial positioning with
+           collision physics, glow effects for high-polarity nodes
+           ($|$score$|>0.7$), and hover tooltips.}
+    \bitem{Implemented \textbf{SQLite query-result caching} with
+           24-hour TTL and LLM-powered query expansion via Ollama
+           Gemma, short-circuiting redundant scraping and model
+           inference on repeated topics.}
+  %% END PROJECT: TweetScape %%
+  \bulletListEnd
+
+\outerListEnd
+
+%------------------  EXPERIENCE  ---------------------
+\section{Experience}
+
+\outerListStart
+
+  \subheading
+    {KJSCE Software Development Cell}{March 2024 -- August 2024}
+    {Software Engineering Intern}{Mumbai, India}
+  \bulletListStart
+  %% BEGIN EXPERIENCE: KJSCE Software Development Cell %%
+    \bitem{Engineered an online course platform serving 1,000+ active
+           students and faculty using the MERN stack, owning
+           authentication, course management, and admin dashboard
+           end-to-end.}
+    \bitem{Optimized backend API routing and MongoDB database indexing,
+           reducing CRUD response times by \textbf{40\%}.}
+    \bitem{Built responsive UI components enabling seamless course
+           creation and content management workflows for faculty users.}
+  %% END EXPERIENCE: KJSCE Software Development Cell %%
+  \bulletListEnd
+
+  \subheading
+    {Caarya Innovative Solutions Pvt. Ltd.}{December 2023 -- February 2024}
+    {Software Development Intern}{Mumbai, India}
+  \bulletListStart
+  %% BEGIN EXPERIENCE: Caarya Innovative Solutions Pvt. Ltd. %%
+    \bitem{Delivered a production-ready client web application in a
+           2-developer team from zero documentation, translating
+           ambiguous requirements into stable implementations.}
+    \bitem{Developed data-driven visualization dashboards integrating
+           REST APIs and MySQL, increasing user engagement
+           metrics by \textbf{25\%}.}
+  %% END EXPERIENCE: Caarya Innovative Solutions Pvt. Ltd. %%
+  \bulletListEnd
+
+\outerListEnd
+
+%======================================================
+\end{document}

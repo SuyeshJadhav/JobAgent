@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from backend.services.profile_rag import batch_fill_fields
 from backend.services.resume_manager import evaluate_and_fetch_resume
-from backend.services.csv_tracker import add_job
+from backend.services.db_tracker import add_job
 
 router = APIRouter(prefix="/api/profile", tags=["profile"])
 PROFILE_DIR = Path(__file__).parent.parent.parent / "profile"
@@ -60,20 +60,38 @@ def application_complete(req: CompleteRequest):
     """Cleanup tailored files and track job in CSV."""
     import os
     from datetime import datetime
-
-    print(f"Application complete for {req.company}")
+    from backend.services.db_tracker import get_jobs, update_job
+    from backend.utils.url_matcher import find_job_by_url
+    from backend.services.excel_formatter import sync_db_to_excel
     
-    # 1. Track in CSV
-    job_data = {
-        "job_id": f"job_{int(datetime.now().timestamp())}",
-        "company": req.company,
-        "title": "Applied Role",
-        "apply_link": req.job_url,
-        "status": "applied",
-        "applied_date": datetime.now().isoformat(),
-        "resume_path": req.generated_resume_path or "references/base_resume.pdf"
-    }
-    add_job(job_data)
+    jobs = get_jobs()
+    matched_job = find_job_by_url(jobs, req.job_url)
+
+    if matched_job:
+        print(f"Tracking existing application for {req.company}")
+        update_job(
+            matched_job["job_id"],
+            status="applied",
+            applied_date=datetime.now().isoformat()
+        )
+    else:
+        print(f"Tracking new application for {req.company}")
+        job_data = {
+            "job_id": f"job_{int(datetime.now().timestamp())}",
+            "company": req.company,
+            "title": "Applied Role",
+            "apply_link": req.job_url,
+            "status": "applied",
+            "applied_date": datetime.now().isoformat(),
+            "resume_path": req.generated_resume_path or "references/main.pdf",
+            "source": "organic"
+        }
+        add_job(job_data)
+        
+    try:
+        sync_db_to_excel()
+    except Exception as e:
+        print(f"Failed to sync excel: {e}")
 
     # 2. Cleanup temp resume
     if req.is_generated and req.generated_resume_path:

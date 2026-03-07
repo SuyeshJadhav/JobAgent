@@ -7,7 +7,7 @@ from backend.services.llm_client import get_llm_client, get_model_name, get_sett
 from backend.services.resume_tailor import run_tailor
 
 ROOT_DIR = Path(__file__).parent.parent.parent
-DEFAULT_RESUME_PATH = ROOT_DIR / "references" / "base_resume.pdf"
+DEFAULT_RESUME_PATH = ROOT_DIR / "references" / "main.pdf"
 TEMP_DIR = ROOT_DIR / "backend" / "temp_resumes"
 
 def evaluate_and_fetch_resume(job_description: str, default_resume_path: str = None) -> dict:

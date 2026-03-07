@@ -8,7 +8,7 @@ import asyncio
 
 from backend.services.resume_tailor import run_tailor
 from backend.services.cover_letter import run_cover_letter
-from backend.services.csv_tracker import (
+from backend.services.db_tracker import (
     get_job_by_id, update_job, load_job_details, get_jobs
 )
 from backend.services.llm_client import get_settings

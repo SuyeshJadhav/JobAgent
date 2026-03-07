@@ -6,11 +6,11 @@ from pathlib import Path
 
 from backend.services.job_sources import fetch_simplify_jobs
 from backend.services.scorer import score_job
-from backend.services.csv_tracker import (
+from backend.services.db_tracker import (
     add_job, get_jobs, get_job_by_id,
     save_job_details, load_job_details, update_job
 )
-from backend.services.excel_formatter import sync_csv_to_excel
+from backend.services.excel_formatter import sync_db_to_excel
 from backend.services.profile_manager import parse_candidate_profile
 from backend.services.llm_client import get_settings
 
@@ -88,8 +88,8 @@ async def _process_jobs_bg(new_jobs: list[dict], profile: dict, threshold: int):
 
     await asyncio.gather(*[process_single_job(job) for job in new_jobs])
     try:
-        sync_csv_to_excel("tracked_jobs.csv")
-        print("[SYNC] Successfully synced tracked_jobs.csv to Excel.")
+        sync_db_to_excel()
+        print("[SYNC] Successfully synced tracked_jobs.db to Excel.")
     except Exception as e:
         print(f"[SYNC ERROR] Failed to sync to Excel: {e}")
 
@@ -226,7 +226,7 @@ def organic_track_and_score(payload: OrganicTrackRequest):
 
     # 7. Sync to Excel
     try:
-        sync_csv_to_excel("tracked_jobs.csv")
+        sync_db_to_excel()
     except Exception as e:
         print(f"[SYNC ERROR] {e}")
 
