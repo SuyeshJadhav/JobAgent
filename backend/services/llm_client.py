@@ -5,12 +5,31 @@ from openai import OpenAI
 CONFIG_PATH = Path(__file__).parent.parent / "config" / "settings.json"
 
 def get_settings() -> dict:
+    """
+    Loads the global application settings from config/settings.json.
+    
+    Returns:
+        dict: Settings dictionary.
+    
+    Raises:
+        FileNotFoundError: If the settings file is missing.
+    """
     if not CONFIG_PATH.exists():
         raise FileNotFoundError(f"Configuration file not found: {CONFIG_PATH}")
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def get_llm_client() -> OpenAI:
+    """
+    Initializes and returns an OpenAI-compatible client based on the 
+    provider (Ollama or Groq) specified in settings.
+    
+    Returns:
+        OpenAI: Configured client instance.
+    
+    Raises:
+        ValueError: If the provider is unknown or keys are missing.
+    """
     settings = get_settings()
     provider = settings.get("llm_provider", "ollama")
     
@@ -26,6 +45,12 @@ def get_llm_client() -> OpenAI:
         raise ValueError(f"Unknown llm_provider: {provider}")
 
 def get_model_name() -> str:
+    """
+    Retrieves the specific model identifier to be used for LLM completions.
+    
+    Returns:
+        str: Model name (e.g., 'qwen2.5:7b').
+    """
     settings = get_settings()
     provider = settings.get("llm_provider", "ollama")
     
@@ -37,6 +62,12 @@ def get_model_name() -> str:
         raise ValueError(f"Unknown llm_provider: {provider}")
 
 def test_connection() -> bool:
+    """
+    Performs a minimal health check call to the configured LLM provider.
+    
+    Returns:
+        bool: True if the connection is successful.
+    """
     try:
         client = get_llm_client()
         model_name = get_model_name()

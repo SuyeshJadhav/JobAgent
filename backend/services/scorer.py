@@ -5,7 +5,17 @@ from backend.services.llm_client import get_llm_client, get_model_name, get_sett
 
 
 def parse_llm_json_response(content: str) -> tuple[int, str]:
-    """Parse structured JSON from the LLM. Falls back to regex extraction."""
+    """
+    Parses structured JSON from the LLM response. 
+    Includes robust fallback logic using regex if the JSON is malformed or 
+    wrapped in markdown fences.
+    
+    Args:
+        content (str): Raw string content from the LLM.
+        
+    Returns:
+        tuple[int, str]: (score, reasoning)
+    """
     # ── Try direct JSON parse ──
     try:
         # Strip markdown fences if present
@@ -35,20 +45,35 @@ def parse_llm_json_response(content: str) -> tuple[int, str]:
     return score, reason
 
 
-def _llm_score(job: dict, profile: dict) -> tuple[int, str]:
+def _format_profile_summary(profile: dict) -> str:
     """
-    Call LLM with a rigid deduction-based rubric.
-    Temperature = 0.0, JSON mode forced.
+    Formats the candidate's profile data into a concise string for the LLM prompt.
+    
+    Args:
+        profile (dict): Parsed candidate profile data.
+        
+    Returns:
+        str: Formatted profile summary.
     """
-    client = get_llm_client()
-    model_name = get_model_name()
-
-    profile_summary = f"""Candidate Target Roles: {profile.get('target_roles', 'N/A')}
+    return f"""Candidate Target Roles: {profile.get('target_roles', 'N/A')}
 Candidate Key Skills: {profile.get('skills', 'N/A')}
 Candidate Experience Level: {profile.get('experience_level', 'N/A')}
 Candidate Preferences: {profile.get('preferences', 'N/A')}
 Candidate Visa Status: Requires sponsorship (F-1 student, OPT/CPT or H1B)"""
 
+def _build_scoring_prompt(job: dict, profile: dict) -> tuple[str, str]:
+    """
+    Constructs the system and user prompts for the LLM scoring engine.
+    Ensures the 'BASE-10 DEDUCTION RUBRIC' is clearly communicated.
+    
+    Args:
+        job (dict): Job record.
+        profile (dict): Candidate profile.
+        
+    Returns:
+        tuple[str, str]: (system_prompt, user_prompt)
+    """
+    profile_summary = _format_profile_summary(profile)
     jd_text = job.get('description', '')
     if len(jd_text) > 10000:
         jd_text = jd_text[:10000]
@@ -116,7 +141,7 @@ Based on the final score and JD requirements, select a strategy:
   of keywords into the Experience/Projects bullets to be competitive.
 
 ═══════════════════════════════════════════
-              OUTPUT FORMAT
+               OUTPUT FORMAT
 ═══════════════════════════════════════════
 Return ONLY valid JSON. No other text.
 {
@@ -125,60 +150,92 @@ Return ONLY valid JSON. No other text.
   "strategy": "skills_only" | "full_rewrite"
 }
 
-CRITICAL INSTRUCTION: DO NOT COPY ANY EXAMPLE TEXT.
-YOU MUST READ THE ACTUAL PROVIDED JOB DESCRIPTION
-AND CANDIDATE PROFILE, THEN CALCULATE THE SCORE
-BASED SOLELY ON THE REAL DATA. EVERY DEDUCTION IN
+CRITICAL INSTRUCTION: EVERY DEDUCTION IN
 YOUR REASONING MUST REFERENCE A SPECIFIC FACT FROM
 THE JOB DESCRIPTION OR CANDIDATE PROFILE."""
 
-    prompt = f"""Candidate Profile:
+    user_msg = f"""Candidate Profile:
 {profile_summary}
 
 Job Details:
 {job_summary}
 
 Apply the deduction rubric and return JSON."""
+    
+    return system, user_msg
 
+def _execute_llm_scoring(system: str, user_msg: str) -> tuple[int, str]:
+    """
+    Executes the LLM API call with robust error handling and model-specific 
+    compatibility logic (e.g., support for JSON mode).
+    
+    Args:
+        system (str): System prompt.
+        user_msg (str): User prompt.
+        
+    Returns:
+        tuple[int, str]: (score, reasoning)
+    """
+    client = get_llm_client()
+    model_name = get_model_name()
+    
     try:
         response = client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": system},
-                {"role": "user", "content": prompt}
+                {"role": "user", "content": user_msg}
             ],
             temperature=0.0,
             max_tokens=300,
             response_format={"type": "json_object"},
         )
-        content = response.choices[0].message.content
-        return parse_llm_json_response(content)
+        return parse_llm_json_response(response.choices[0].message.content)
     except Exception as e:
-        # If response_format isn't supported (some Ollama models), retry without it
-        if "response_format" in str(e) or "json" in str(e).lower():
+        # Fallback for models not supporting response_format="json_object"
+        if "response_format" in str(e).lower() or "json" in str(e).lower():
             try:
                 response = client.chat.completions.create(
                     model=model_name,
                     messages=[
                         {"role": "system", "content": system},
-                        {"role": "user", "content": prompt}
+                        {"role": "user", "content": user_msg}
                     ],
                     temperature=0.0,
                     max_tokens=300,
                 )
-                content = response.choices[0].message.content
-                return parse_llm_json_response(content)
+                return parse_llm_json_response(response.choices[0].message.content)
             except Exception as e2:
-                print(f"[SCORER] LLM retry failed: {e2}")
                 return 0, f"Error calling LLM: {str(e2)}"
-        print(f"[SCORER] LLM request error: {e}")
         return 0, f"Error calling LLM: {str(e)}"
+
+def _llm_score(job: dict, profile: dict) -> tuple[int, str]:
+    """
+    Internal wrapper to orchestrate the prompt building and LLM execution.
+    
+    Args:
+        job (dict): Job record.
+        profile (dict): Candidate profile.
+        
+    Returns:
+        tuple[int, str]: (score, reasoning)
+    """
+    system, user_msg = _build_scoring_prompt(job, profile)
+    return _execute_llm_scoring(system, user_msg)
 
 
 def score_job(job: dict, profile: dict) -> tuple[int, str]:
     """
-    Score a job using local heuristics (fast pre-checks) then the LLM rubric.
-    Returns (score: int, reason: str)
+    Primary API to score a job for a candidate.
+    Combines fast local heuristic pre-checks (for known auto-rejects/caps) 
+    with a sophisticated LLM deduction rubric.
+    
+    Args:
+        job (dict): Job record.
+        profile (dict): Candidate profile.
+        
+    Returns:
+        tuple[int, str]: (score 0-10, reason)
     """
     # ── Fast pre-check: known quant firms ──
     QUANT_FIRMS = {

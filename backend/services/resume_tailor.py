@@ -1,13 +1,21 @@
 import json
-import re
 import shutil
 import subprocess
-import tomllib
 import pypdf
 from datetime import datetime
 from pathlib import Path
 
-from backend.services.llm_client import get_llm_client, get_model_name, get_settings
+from backend.services.llm_client import get_settings
+from backend.utils.latex_parser import (
+    safe_filename,
+    parse_marker_sections,
+    inject_content_into_tex,
+    cleanup_latex_aux_files
+)
+from backend.services.resume_generators import (
+    generate_tailored_content,
+    trim_bullets
+)
 
 ROOT_DIR = Path(__file__).parent.parent.parent
 REFERENCES_DIR = ROOT_DIR / "references"
@@ -16,11 +24,17 @@ OUTPUT_DIR = ROOT_DIR / "outputs" / "applications"
 BASE_RESUME = REFERENCES_DIR / "main.tex"
 CONTEXT_BANK = REFERENCES_DIR / "context_bank.toml"
 
-def safe_filename(name: str) -> str:
-    """Make string safe for filesystem."""
-    return "".join(c if c.isalnum() or c in " _-" else "_" for c in name).strip()
-
 def load_references() -> dict:
+    """
+    Loads core reference files (Base Resume LaTeX and Context Bank TOML).
+    
+    Returns:
+        dict: Contains 'base_resume_tex' string and 'context_bank' dictionary.
+    
+    Raises:
+        FileNotFoundError: If the base resume file is missing.
+    """
+    import tomllib # Ensure tomllib is available if not globally imported
     refs = {}
     if BASE_RESUME.exists():
         refs["base_resume_tex"] = BASE_RESUME.read_text(encoding="utf-8")
@@ -35,399 +49,29 @@ def load_references() -> dict:
         
     return refs
 
-def parse_marker_sections(tex_content: str) -> dict:
-    pattern = re.compile(
-        r"^(?P<indent>\s*)%%\s*BEGIN\s+(?P<name>.+?)\s*%%\s*$"
-        r"(?P<body>.*?)"
-        r"^(?P=indent)%%\s*END\s+(?P=name)\s*%%\s*$",
-        re.MULTILINE | re.DOTALL,
-    )
-    sections = {}
-    for m in pattern.finditer(tex_content):
-        name = m.group("name").strip()
-        body = m.group("body")
-
-        start_char = m.start()
-        end_char = m.end()
-        start_line = tex_content[:start_char].count("\n")
-        end_line = tex_content[:end_char].count("\n")
-
-        sections[name] = {
-            "start": start_line,
-            "end": end_line,
-            "content": body.strip(),
-        }
-    return sections
-
-def _get_context_for_section(section_name: str, context_bank: dict) -> str:
-    fragments = []
-    if section_name.upper().startswith("EXPERIENCE:"):
-        company_hint = section_name.split(":", 1)[1].strip().lower()
-        for exp in context_bank.get("experience", []):
-            if company_hint in exp.get("company", "").lower() or company_hint in exp.get("role", "").lower():
-                for key in exp:
-                    if key.startswith("project_"):
-                        proj = exp[key]
-                        if isinstance(proj, list):
-                            for p in proj:
-                                fragments.append("\n".join(f"  {k}: {v}" for k, v in p.items()))
-                        elif isinstance(proj, dict):
-                            fragments.append("\n".join(f"  {k}: {v}" for k, v in proj.items()))
-
-    if section_name.upper().startswith("PROJECTS:"):
-        project_hint = section_name.split(":", 1)[1].strip().lower()
-        for proj in context_bank.get("project", []):
-            if project_hint in proj.get("name", "").lower():
-                fragments.append("\n".join(f"  {k}: {v}" for k, v in proj.items()))
-
-    return "\n---\n".join(fragments) if fragments else ""
-
-def extract_jd_keywords(jd_text: str) -> dict:
-    system = (
-        "You are a JD analysis engine. Extract structured keywords. Return ONLY valid JSON with keys: "
-        '"required_skills", "action_verbs", "seniority_signals", "domain_focus".'
-    )
-    client = get_llm_client()
-    try:
-        resp = client.chat.completions.create(
-            model=get_model_name(),
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": jd_text}],
-            temperature=0.3
-        )
-        content = resp.choices[0].message.content.strip()
-        content = re.sub(r"^```(?:json)?\s*", "", content)
-        content = re.sub(r"\s*```$", "", content)
-        return json.loads(content)
-    except Exception:
-        return {"required_skills": [], "action_verbs": [], "seniority_signals": [], "domain_focus": []}
-
-def extract_numbers(text: str) -> set:
-    return set(re.findall(r'\b\d+(?:\.\d+)?\b', text))
-
-class HallucinationError(Exception):
-    pass
-
-# ─── Post-processing: strip LLM preamble / markdown fences ─────────────
-
-def sanitize_llm_latex(raw: str) -> str:
-    """
-    Strip markdown code fences, conversational preambles, and <scratchpad>
-    tags from LLM output so only clean LaTeX remains.
-    """
-    # Remove ```latex ... ``` or ``` ... ``` wrappers
-    text = re.sub(r"^```(?:latex|tex)?\s*", "", raw, flags=re.MULTILINE)
-    text = re.sub(r"\s*```$", "", text, flags=re.MULTILINE)
-    # Remove <scratchpad>...</scratchpad> blocks
-    text = re.sub(r"<scratchpad>.*?</scratchpad>", "", text, flags=re.DOTALL)
-    # Remove conversational preamble lines ("Here are the ...", "Sure! ...")
-    text = re.sub(r"^(?:Here|Sure|Below|Note|Okay|The following)[^\\\n]*\n", "", text, flags=re.MULTILINE | re.IGNORECASE)
-    # Remove trailing comments like "% Continue with the rest..."
-    text = re.sub(r"^%\s*Continue.*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
-    text = re.sub(r"^%\s*Example of.*$", "", text, flags=re.MULTILINE | re.IGNORECASE)
-    return text.strip()
-
-
-def rewrite_bullets(section_name: str, current_text: str, keywords: dict, context_bank: dict, is_retry: bool = False) -> str:
-    context_notes = _get_context_for_section(section_name, context_bank)
-    kw_str = json.dumps(keywords, indent=2)
-
-    system = r"""You are a LaTeX resume editor performing SURGICAL keyword integration.
-
-<philosophy>
-RULE OF SUBTLETY: You are NOT rewriting bullets from scratch.
-You are making MINIMAL, targeted word-swaps to weave JD keywords
-into the candidate's EXISTING bullet points. The candidate's
-original sentence structure, metrics, and achievements MUST survive.
-Think of yourself as a copy-editor, not a ghostwriter.
-</philosophy>
-
-<strict_rules>
-FORMATTING:
-- Preserve every \bitem{} wrapper exactly.
-- Output ONLY valid LaTeX. No markdown. No conversational text.
-- Each bullet must be ≤ 140 characters of visible text content.
-
-CONTENT INTEGRITY & ANTI-HALLUCINATION (BREAKING THIS IS A FATAL ERROR):
-- Keep ALL numbers, percentages, and metrics EXACTLY as original.
-- Keep ALL tool/framework names EXACTLY as original.
-- Do NOT invent projects, tools, skills, or metrics.
-- Do NOT add \textbf{}, \section*, headers, or structural LaTeX.
-- Do NOT output preambles like "Here are the updated bullets:".
-- Do NOT output dummy examples like "Software Engineer, XYZ Corp" etc.
-- Do NOT reinvent and add random tools to the EXPERIENCE section bullets.
-
-TENSE & GRAMMAR LOCK (CRITICAL):
-- You MUST maintain the EXACT tense of the original bullet.
-- If the original uses past tense ("Architected", "Built", "Designed"),
-  the tailored version MUST remain past tense.
-- Do NOT blindly copy present-tense verbs from the job description.
-- NEVER change a past-tense bullet to present tense.
-
-VERB VARIETY:
-- NEVER start two consecutive bullets with the same verb.
-- PREFER strong past-tense verbs: Built, Engineered, Architected,
-  Optimized, Designed, Implemented, Reduced, Accelerated, Shipped,
-  Integrated, Developed, Orchestrated, Automated, Deployed, Refactored,
-  Spearheaded, Streamlined, Pioneered, Consolidated.
-
-LaTeX ESCAPING (CRITICAL):
-- C# → C\#     % → \%     & → \&     _ → \_     $ → \$
-- Always escape these characters in generated text.
-
-HIGHLIGHTING:
-- Use \textbf{...} for specific keyword emphasis inside a \bitem.
-- NEVER use the old \imp macro.
-</strict_rules>
-
-<output_format>
-Return ONLY \bitem{} lines. One per line, no blank lines between them.
-
-Example input:
-  \bitem{Built a \textbf{RAG pipeline} using LangChain...}
-Example output (weaving "retrieval-augmented generation" keyword):
-  \bitem{Built a \textbf{retrieval-augmented generation pipeline} using LangChain...}
-</output_format>"""
-
-    if is_retry:
-        system += "\n\nSTRICT WARNING: Your previous attempt hallucinated numbers or violated rules. Use ONLY numbers present in the original text!"
-
-    user_msg = f"""SECTION: {section_name}
-
-JD KEYWORDS TO WEAVE IN (IF APPLICABLE):
-{kw_str}
-
-REAL CONTEXT (use ONLY these facts — no invention):
-{context_notes}
-FATAL RULE: If you cannot weave a keyword without inventing a programming language (like Angular, Java, C#, etc.) not explicitly listed in the REAL CONTEXT above, you MUST ignore the keyword entirely.
-
-ORIGINAL BULLETS (apply minimal keyword swaps, preserve structure):
-{current_text}
-
-Return ONLY the rewritten LaTeX lines now."""
-
-    client = get_llm_client()
-    resp = client.chat.completions.create(
-        model=get_model_name(),
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-        temperature=0.5
-    )
-    return sanitize_llm_latex(resp.choices[0].message.content.strip())
-
-
-def rewrite_skills_section(current_text: str, keywords: dict, context_bank: dict) -> str:
-    """
-    Specialized rewriter for the Skills section.
-    Aggressively cross-references JD keywords with the candidate's master skills.md bank.
-    """
-    kw_str = json.dumps(keywords, indent=2)
-    
-    # Load candidate's master skills file
-    skills_md = ""
-    skills_path = Path(__file__).parent.parent.parent / "profile" / "skills.md"
-    if skills_path.exists():
-        with open(skills_path, "r", encoding="utf-8") as f:
-            skills_md = f.read()
-
-    system = r"""You are a LaTeX resume editor. You are editing ONLY a Skills section.
-
-<strict_rules>
-FORMAT:
-- The skills section MUST remain a dense, comma-separated list.
-- Each line starts with \textbf{Category:} followed by comma-separated skills.
-- Lines are separated by \\.
-- Do NOT generate \resumeItem{} bullet points for skills.
-- Do NOT add conversational text, markdown, or explanations.
-- Output ONLY the formatted skill lines, nothing else.
-
-ADDING SKILLS (AGGRESSIVE INJECTION):
-- You are provided with a MASTER SKILLS BANK. You MUST cross reference the JD Keywords against this Master Skills Bank.
-- If the JD asks for a skill, AND it exists ANYWHERE in the Master Skills Bank, you MUST inject it into the resume skills section.
-- You are permitted to add missing keywords like "LangChain", "Agentic Workflows", "Vector Databases", "Docker", "Kubernetes", "Prompt Engineering", etc. as long as they are related to what the JD is asking for and are present in the candidate's master skills.
-- Integrate new skills NATURALLY into the existing category lines.
-- You may REORDER skills to front-load JD-relevant ones.
-- Do NOT remove existing skills.
-
-BLOCKLIST (NEVER add these to an engineering resume):
-- Microsoft Word, Excel, PowerPoint, Outlook, Office 365, Teams
-- Google Docs, Google Sheets, Slack, Zoom, Jira, Confluence
-- Any basic office/productivity/admin tool
-- These are NOT engineering skills. Ignore them even if the JD lists them.
-
-LaTeX ESCAPING:
-- C# → C\#     & → \&     % → \%
-</strict_rules>
-
-Example output:
-\textbf{Languages:} Python, C\#, JavaScript, SQL, Go \\
-\textbf{AI/ML:} LangChain, LLMs, PyTorch, HuggingFace Transformers \\
-\textbf{Web:} React, FastAPI, Node.js"""
-
-    user_msg = f"""JD KEYWORDS:
-{kw_str}
-
-MASTER SKILLS BANK (Use this as unquestionable truth for candidate capability):
-{skills_md}
-
-CURRENT SKILLS SECTION:
-{current_text}
-
-Return the updated skills lines now."""
-
-    client = get_llm_client()
-    resp = client.chat.completions.create(
-        model=get_model_name(),
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-        temperature=0.4
-    )
-    result = sanitize_llm_latex(resp.choices[0].message.content.strip())
-
-    # Safety net: if the LLM still produced \bitem, reject and keep original
-    if r"\bitem" in result:
-        print(f"[GUARD] Skills rewriter produced bullet points — rejecting, keeping original.")
-        return current_text
-    return result
-
-
-def rewrite_bullets_with_validation(section_name: str, current_text: str, keywords: dict, context_bank: dict) -> str:
-    context_notes = _get_context_for_section(section_name, context_bank)
-    true_numbers = extract_numbers(context_notes) if context_notes else set()
-    true_numbers.update(extract_numbers(current_text))
-    
-    for attempt in range(2):
-        is_retry = attempt > 0
-        output = rewrite_bullets(section_name, current_text, keywords, context_bank, is_retry)
-        output_numbers = extract_numbers(output)
-        
-        hallucinated = output_numbers - true_numbers
-        if hallucinated:
-            print(f"[GUARD] LLM invented number(s) {hallucinated} in section '{section_name}'")
-            if attempt == 0:
-                continue
-            else:
-                return current_text
-        return output
-    return current_text
-
-
-def trim_bullets(current_text: str) -> str:
-    system = r"""You are an expert LaTeX resume editor.
-The resume overflows to 2 pages. Your job: shorten each
-\bitem{} bullet by ~15 characters while keeping
-ALL numbers, metrics, and LaTeX macros (\textbf{}, \bitem{})
-perfectly intact.
-
-Rules:
-- Output ONLY the shortened \bitem{} lines.
-- Do NOT output preambles, comments, examples, or markdown.
-- Do NOT change any numbers or metric values.
-- Do NOT add new content or sections."""
-
-    user_msg = f"""Shorten these bullets:
-{current_text}"""
-
-    client = get_llm_client()
-    resp = client.chat.completions.create(
-        model=get_model_name(),
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-        temperature=0.3
-    )
-    return sanitize_llm_latex(resp.choices[0].message.content.strip())
-
-
-def _generate_tailored_content(job_description: str, sections: dict, context_bank: dict, strategy: str = "full_rewrite") -> dict:
-    """
-    Routes each section to the appropriate rewriter:
-    - HEADER / SUMMARY / EDUCATION → pass through (no changes)
-    - SKILLS → dedicated keyword-only rewriter (no bullet conversion)
-    - PROJECTS / EXPERIENCE → surgical bullet keyword weaving (skipped if strategy is skills_only)
-    """
-    desc = job_description
-    if len(desc) > 8000:
-        desc = desc[:8000]
-    
-    keywords = extract_jd_keywords(desc)
-
-    SKIP_SECTIONS = {"HEADER", "SUMMARY", "EDUCATION", "PROFESSIONAL SUMMARY"}
-    rewritten = {}
-
-    for section_name, sec_data in sections.items():
-        sec_upper = section_name.upper()
-
-        # Pass-through sections
-        if any(skip in sec_upper for skip in SKIP_SECTIONS):
-            rewritten[section_name] = sec_data["content"]
-            continue
-
-        # Skills → dedicated comma-list rewriter
-        if "SKILLS" in sec_upper:
-            print(f"Tailoring section (skills mode): {section_name}")
-            rewritten[section_name] = rewrite_skills_section(
-                sec_data["content"], keywords, context_bank
-            )
-            continue
-
-        # Projects / Experience → bullet keyword weaving
-        if "PROJECTS" in sec_upper or "EXPERIENCE" in sec_upper:
-            if strategy == "skills_only":
-                print(f"Strategy: skills_only. Skipping rewrite for: {section_name}")
-                rewritten[section_name] = sec_data["content"]
-            else:
-                print(f"Tailoring section (bullets mode): {section_name}")
-                rewritten[section_name] = rewrite_bullets_with_validation(
-                    section_name, sec_data["content"], keywords, context_bank
-                )
-            continue
-
-        # Anything else with domain relevance
-        if any(k.lower() in sec_upper.lower() for k in keywords.get("domain_focus", [])):
-            if strategy == "skills_only":
-                rewritten[section_name] = sec_data["content"]
-            else:
-                print(f"Tailoring section (bullets mode): {section_name}")
-                rewritten[section_name] = rewrite_bullets_with_validation(
-                    section_name, sec_data["content"], keywords, context_bank
-                )
-        else:
-            rewritten[section_name] = sec_data["content"]
-
-    return rewritten
-
-
-def _inject_content_into_tex(template_str: str, tailored_content: dict, sections: dict) -> str:
-    """
-    Injects tailored content back into the LaTeX template string without altering original sections boundaries.
-    """
-    lines = template_str.split("\n")
-    result_lines = lines.copy()
-
-    for section_name in sorted(tailored_content.keys(), key=lambda s: sections[s]["start"], reverse=True):
-        sec = sections[section_name]
-        begin_line = sec["start"]
-        end_line = sec["end"]
-        new_content = tailored_content[section_name]
-        result_lines[begin_line + 1:end_line] = [new_content]
-
-    return "\n".join(result_lines)
-
-
 def _cleanup_aux_files(output_dir: Path, filename: str):
-    """
-    Cleans up the .aux, .log, and .out files left behind by pdflatex compilation.
-    """
-    for ext in [".aux", ".log", ".out"]:
-        aux_file = output_dir / f"{filename}{ext}"
-        if aux_file.exists():
-            try:
-                aux_file.unlink()
-            except OSError:
-                pass
-
+    """Internal helper to remove LaTeX auxiliary files after compilation."""
+    cleanup_latex_aux_files(output_dir, filename)
 
 def _compile_latex_to_pdf(tex_string: str, output_dir: Path, filename: str,
                           sections: dict = None, tailored_content: dict = None, template_str: str = None) -> dict:
     """
-    Handles OS-level subprocess call to compile LaTeX to PDF. Contains logic to trim bullets and compress
-    LaTeX spacing if compilation spills onto two pages.
+    Orchestrates the LaTeX to PDF compilation process via pdflatex.
+    
+    Includes a 2-pass 'shrink-to-fit' logic:
+    1. Trims bullets from experience/projects if they are too long.
+    2. Compresses LaTeX vertical spacing (itemsep) and font size slightly.
+    
+    Args:
+        tex_string (str): The LaTeX content to compile.
+        output_dir (Path): Where to save the output files.
+        filename (str): Base filename for the PDF.
+        sections (dict, optional): Parsed marker sections for granular trimming.
+        tailored_content (dict, optional): The raw tailored text blocks.
+        template_str (str, optional): The original base template.
+        
+    Returns:
+        dict: { status: 'success'|'warning'|'error', pdf_path: str, ... }
     """
     tex_path = output_dir / "resume.tex"
     pdf_path = output_dir / f"{filename}.pdf"
@@ -435,12 +79,14 @@ def _compile_latex_to_pdf(tex_string: str, output_dir: Path, filename: str,
     tex_path.write_text(tex_string, encoding="utf-8")
 
     def call_pdflatex():
+        """Helper to invoke the pdflatex subprocess."""
         return subprocess.run(
             ["pdflatex", f"-jobname={filename}", "-interaction=nonstopmode", "-output-directory", str(output_dir), str(tex_path)],
             capture_output=True, text=True, timeout=60
         )
 
     def get_page_count():
+        """Helper to determine the number of pages in the generated PDF."""
         try:
             with open(pdf_path, "rb") as f:
                 reader = pypdf.PdfReader(f)
@@ -458,9 +104,9 @@ def _compile_latex_to_pdf(tex_string: str, output_dir: Path, filename: str,
             _cleanup_aux_files(output_dir, filename)
             return {"status": "success", "output_dir": str(output_dir), "pdf_path": str(pdf_path)}
 
-        # Handle > 1 page situations
+        # --- Recovery Pass 1: Bullet Trimming ---
         if tailored_content and sections and template_str:
-            print("Pages > 1. Attempt 1: Trimming bullets...")
+            print("[TAILOR] Pages > 1. Attempt 1: Trimming bullets...")
             trimmed_rewritten = {}
             for sec, text in tailored_content.items():
                 if sec.upper() not in ("SUMMARY", "SKILLS"):
@@ -468,32 +114,30 @@ def _compile_latex_to_pdf(tex_string: str, output_dir: Path, filename: str,
                 else:
                     trimmed_rewritten[sec] = text
 
-            tailored_tex_trimmed = _inject_content_into_tex(template_str, trimmed_rewritten, sections)
+            tailored_tex_trimmed = inject_content_into_tex(template_str, trimmed_rewritten, sections)
             tex_path.write_text(tailored_tex_trimmed, encoding="utf-8")
-            
             call_pdflatex()
             
             if pdf_path.exists() and get_page_count() == 1:
                 _cleanup_aux_files(output_dir, filename)
                 return {"status": "success", "output_dir": str(output_dir), "pdf_path": str(pdf_path)}
             
-            # Carry over the trimmed text to Attempt 2
-            tex_string = tailored_tex_trimmed
+            tex_string = tailored_tex_trimmed # Carry trimmed result to next attempt
 
-        print("Pages > 1. Attempt 2: LaTeX compression...")
+        # --- Recovery Pass 2: Layout Compression ---
+        print("[TAILOR] Pages > 1. Attempt 2: LaTeX compression...")
         compressed_tex = tex_string.replace(r"\setlength{\itemsep}{1pt}", r"\setlength{\itemsep}{0pt}")
         compressed_tex = compressed_tex.replace(r"10pt", r"9.5pt")
         tex_path.write_text(compressed_tex, encoding="utf-8")
-
         call_pdflatex()
 
         if pdf_path.exists() and get_page_count() == 1:
             _cleanup_aux_files(output_dir, filename)
             return {"status": "success", "output_dir": str(output_dir), "pdf_path": str(pdf_path)}
 
-        # Final state
+        # Final state - still > 1 page
         _cleanup_aux_files(output_dir, filename)
-        print("Resume is 2 pages. Manual review needed.")
+        print("[WARN] Resume is 2 pages. Manual review recommended.")
         return {"status": "warning", "warning": "Resume is 2 pages. Manual review needed.", "output_dir": str(output_dir), "pdf_path": str(pdf_path)}
 
     except FileNotFoundError:
@@ -504,21 +148,28 @@ def _compile_latex_to_pdf(tex_string: str, output_dir: Path, filename: str,
 
 def run_tailor(job: dict) -> dict:
     """
-    Main pipeline to tailor a resume.
-    1. Loads contextual data.
-    2. Generates tailored content via LLM.
-    3. Injects content and safely compiles LaTeX to PDF.
+    The main high-level pipeline for tailoring a resume.
+    
+    Workflow:
+    1. Resolve directories and filenames.
+    2. Sync job details to a local JSON file for the application folder.
+    3. Delegate content generation to the LLM-driven 'resume_generators' service.
+    4. Inject generated text into markers using the 'latex_parser' utility.
+    5. Compile to PDF with automatic length management.
+    6. Perform directory cleanup for consistency.
+    
+    Args:
+        job (dict): Expected to contain 'company', 'title', 'description', 
+                   and optionally 'job_id' and 'strategy'.
+                   
+    Returns:
+        dict: Compilation result including PDF path or error details.
     """
     settings = get_settings()
     candidate_name = settings.get("candidate_name", "Suyesh Jadhav")
     safe_name = safe_filename(candidate_name)
 
     from backend.services.db_tracker import _get_readable_job_dir
-    import shutil
-
-    company = safe_filename(job.get("company", "Unknown"))
-    role = safe_filename(job.get("title", "Unknown"))
-    date_str = datetime.now().strftime("%Y-%m-%d")
 
     target_dir = _get_readable_job_dir(job)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -538,28 +189,25 @@ def run_tailor(job: dict) -> dict:
             except Exception:
                 pass
 
-    if date_str: # Check kept for compatibility
-        pass
-
     refs = load_references()
     sections = parse_marker_sections(refs["base_resume_tex"])
 
-    # Step 1: Generate Tailored Content
-    content = _generate_tailored_content(
+    # Step 1: Generate Tailored Content via LLM service
+    content = generate_tailored_content(
         job_description=job.get("description", ""),
         sections=sections,
         context_bank=refs["context_bank"],
         strategy=job.get("strategy", "full_rewrite")
     )
 
-    # Step 2: Inject Content into LaTeX
-    tex_str = _inject_content_into_tex(
+    # Step 2: Inject Content into LaTeX template
+    tex_str = inject_content_into_tex(
         template_str=refs["base_resume_tex"],
         tailored_content=content,
         sections=sections
     )
 
-    # Step 3: Handle compilation, retry flow, and output
+    # Step 3: Compile PDF and handle multi-page retry flow
     pdf_res = _compile_latex_to_pdf(
         tex_string=tex_str,
         output_dir=target_dir,
@@ -569,8 +217,7 @@ def run_tailor(job: dict) -> dict:
         template_str=refs["base_resume_tex"]
     )
 
-    # Step 4: Clean up the initial JD fetch folder 
-    job_id = job.get("job_id")
+    # Step 4: Final cleanup of secondary tracking artifacts
     if job_id:
         old_dir = OUTPUT_DIR / str(job_id)
         if old_dir.exists() and old_dir.is_dir() and old_dir != target_dir:
@@ -582,15 +229,5 @@ def run_tailor(job: dict) -> dict:
     return pdf_res
 
 if __name__ == "__main__":
-    job_mock = {
-        "job_id": "test1234",
-        "company": "Test Company",
-        "title": "Data Scientist",
-        "description": "We need Python, SQL, and Machine Learning expertise.",
-        "score": 9,
-        "reason": "Good match",
-        "apply_link": "https://example.com"
-    }
-    
-    # We will test simply if the files parse ok!
+    # Simple smoke test
     print(safe_filename("Suyesh Jadhav"))

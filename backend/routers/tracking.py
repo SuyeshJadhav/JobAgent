@@ -17,6 +17,15 @@ class TrackJobPayload(BaseModel):
 
 @router.post("/track_job")
 def track_job(payload: TrackJobPayload):
+    """
+    Manually tracks a job by adding its metadata to Google Sheets/Excel.
+    
+    Args:
+        payload (TrackJobPayload): Job title, company, and URL.
+        
+    Returns:
+        dict: Success status and message.
+    """
     try:
         date_added = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         sheets_manager.append_job_row(
@@ -38,9 +47,15 @@ def sync_github_jobs(
         description="Comma-separated job types to sync: internship, newgrad"
     )
 ):
-    """Fetch jobs from SimplifyJobs GitHub repos and add them to Google Sheets.
+    """
+    Fetches job listings from community GitHub repos (e.g., SimplifyJobs), 
+    filters them, and batch-adds them to the tracking system.
     
-    Automatically deduplicates against existing entries by URL.
+    Args:
+        job_types (str): Comma-separated list of types ('internship', 'newgrad').
+        
+    Returns:
+        dict: Summary of additions and skipped duplicates.
     """
     try:
         types_list = [t.strip() for t in job_types.split(",") if t.strip()]
@@ -73,8 +88,6 @@ def sync_github_jobs(
         # 3. Batch-add to Sheets (handles dedup internally)
         result = sheets_manager.batch_append_job_rows(sheet_rows)
 
-        # 4. (Removed) Auto-save flat .txt files to prevent bloat. Details are managed natively.
-
         # 5. Auto-format the Excel file
         try:
             format_excel()
@@ -97,7 +110,13 @@ def sync_github_jobs(
 
 @router.post("/format_excel")
 def format_excel_endpoint():
-    """Manual trigger to sync the tracked_jobs.db into the format_excel spreadsheet."""
+    """
+    Manual trigger to sync the tracked_jobs.db into the Excel spreadsheet 
+    and apply professional formatting (alternating row colors, auto-fit).
+    
+    Returns:
+        dict: Success message.
+    """
     try:
         sync_db_to_excel()
         return {"status": "success", "message": "Synced tracked_jobs.db to Excel."}

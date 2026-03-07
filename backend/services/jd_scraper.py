@@ -28,7 +28,15 @@ WAIT_SELECTORS = {
 
 
 def _extract_text_from_html(html: str) -> str:
-    """Strip HTML tags and extract clean text from raw HTML."""
+    """
+    Strips HTML tags, styles, and scripts to extract clean text from raw HTML.
+    
+    Args:
+        html (str): The raw HTML input.
+        
+    Returns:
+        str: Sanitized plain text.
+    """
     clean = re.sub(r'<script[^>]*>.*?</script>', '', html, flags=re.DOTALL)
     clean = re.sub(r'<style[^>]*>.*?</style>', '', clean, flags=re.DOTALL)
     clean = re.sub(r'<[^>]+>', ' ', clean)
@@ -37,17 +45,26 @@ def _extract_text_from_html(html: str) -> str:
 
 
 def _try_css_text(page, selector: str) -> str:
-    """Try to extract text from a CSS selector on the response object."""
+    """
+    Attempts to extract text from a specific CSS selector on a Scrapling page object.
+    
+    Args:
+        page: The Scrapling response object.
+        selector (str): CSS selector string.
+        
+    Returns:
+        str: Extracted text or empty string if not found/too short.
+    """
     try:
         result = page.css(selector)
         if not result:
             return ""
         el = result[0]
-        # Try .text attribute first
+        # Try .text attribute first (standard for Scrapling)
         text = getattr(el, 'text', None)
         if text and len(str(text).strip()) > 50:
             return str(text).strip()
-        # Try .get() which returns raw HTML of the element
+        # Fallback to manual tag stripping if .text fails
         raw = getattr(el, 'get', None)
         if callable(raw):
             raw_html = raw()
@@ -64,7 +81,10 @@ def _try_css_text(page, selector: str) -> str:
 
 
 def _get_wait_selector(url: str) -> str:
-    """Pick the best wait_selector based on the URL's domain."""
+    """
+    Determines the best CSS selector to wait for before finishing 
+    dynamic rendering, based on the URL domain.
+    """
     for domain, selector in WAIT_SELECTORS.items():
         if domain in url:
             return selector
@@ -72,7 +92,9 @@ def _get_wait_selector(url: str) -> str:
 
 
 def _extract_body_text(page) -> str:
-    """Extract text from the page body as a last resort."""
+    """
+    Extracts text from the entire page body as a last resort fallback.
+    """
     if not page.body:
         return ""
     html = page.body.decode("utf-8", errors="ignore") if isinstance(page.body, bytes) else str(page.body)
@@ -80,7 +102,15 @@ def _extract_body_text(page) -> str:
 
 
 def _extract_from_page(page) -> str:
-    """Try each ATS selector, then fall back to body text."""
+    """
+    Iteratively tries multiple ATS-specific selectors to find the most relevant JD text.
+    
+    Args:
+        page: The Scrapling response object.
+        
+    Returns:
+        str: Most likely JD text content.
+    """
     for sel in ATS_SELECTORS:
         text = _try_css_text(page, sel)
         if text and len(text) > 100:
@@ -90,6 +120,18 @@ def _extract_from_page(page) -> str:
 
 
 async def scrape_full_jd(url: str) -> str:
+    """
+    Primary API to scrape a full Job Description from a URL.
+    Uses a hybrid strategy:
+    1. DynamicFetcher (renders JavaScript) for modern ATS platforms.
+    2. StealthyFetcher (static fetch) as a fallback/speed optimization.
+    
+    Args:
+        url (str): The job posting URL.
+        
+    Returns:
+        str: The extracted plain text of the JD, or 'SCRAPE_BLOCKED' if bot-blocked.
+    """
     try:
         wait_sel = _get_wait_selector(url)
 

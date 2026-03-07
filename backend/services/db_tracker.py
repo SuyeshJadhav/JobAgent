@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import re
+from backend.utils.text_cleaner import safe_filename
 from pathlib import Path
 from datetime import datetime
 
@@ -25,13 +26,21 @@ STATUS_ORDER = [
 ]
 
 def get_db_connection():
-    """Returns a SQLite connection. Thread-safe when used locally."""
+    """
+    Returns a SQLite connection object with row_factory enabled for dict-like access.
+    
+    Returns:
+        sqlite3.Connection: Connection to the tracking database.
+    """
     conn = sqlite3.connect(DB_PATH, timeout=10.0)
     conn.row_factory = sqlite3.Row  # Enables dict-like access
     return conn
 
 def _ensure_db():
-    """Create the jobs table if it doesn't exist."""
+    """
+    Initializes the SQLite database and creates the 'jobs' table if it doesn't already exist.
+    Runs automatically on module import.
+    """
     query = '''
     CREATE TABLE IF NOT EXISTS jobs (
         job_id TEXT PRIMARY KEY,
@@ -60,8 +69,15 @@ _ensure_db()
 
 def _can_transition(current: str, new: str) -> bool:
     """
-    Enforce forward-only status transitions.
-    Side branches (skipped, failed) allowed anytime.
+    Enforces a forward-only status transition logic to prevent data corruption.
+    (e.g., cannot move from 'applied' back to 'found').
+    
+    Args:
+        current (str): Current status.
+        new (str): Proposed new status.
+        
+    Returns:
+        bool: True if transition is valid.
     """
     SIDE_BRANCHES = {"skipped", "failed", "manual_needed"}
     if new in SIDE_BRANCHES:
@@ -75,8 +91,13 @@ def _can_transition(current: str, new: str) -> bool:
 
 def add_job(job: dict) -> bool:
     """
-    Add job to SQLite DB. Skip if job_id already exists.
-    Returns True if added, False if duplicate.
+    Inserts a new job record into the SQLite database.
+    
+    Args:
+        job (dict): Dictionary contain job metadata (title, company, link, etc.)
+        
+    Returns:
+        bool: True if the job was successfully added, False if it already exists (duplicate).
     """
     job_id = job.get("job_id")
     if not job_id:
@@ -113,8 +134,15 @@ def add_job(job: dict) -> bool:
 
 def update_job(job_id: str, **kwargs) -> bool:
     """
-    Update fields for a specific job_id in SQLite.
-    Returns True if found and updated, False if not found.
+    Updates specific fields for an existing job record.
+    Includes validation for status transitions and score types.
+    
+    Args:
+        job_id (str): The unique ID of the job to update.
+        **kwargs: Column-value pairs to update.
+        
+    Returns:
+        bool: True if found and updated, False otherwise.
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -134,7 +162,7 @@ def update_job(job_id: str, **kwargs) -> bool:
                 print(f"[WARN] Invalid transition: {current_status} → {new_status}")
                 kwargs.pop("status")
         
-        # Payload Starvation Defensive Guard
+        # Payload Starvation Defensive Guard: Don't store massive JDs for rejected jobs
         eval_status = kwargs.get("status", row_dict.get("status", ""))
         eval_score = int(kwargs.get("score", row_dict.get("score", 0)))
         if eval_status in ["rejected", "skipped"] or eval_score < 6:
@@ -170,7 +198,13 @@ def update_job(job_id: str, **kwargs) -> bool:
 
 def get_jobs(status: str = None) -> list[dict]:
     """
-    Get all jobs, optionally filtered by status.
+    Retrieves all job records from the database, optionally filtered by status.
+    
+    Args:
+        status (str, optional): The status filter (e.g. 'shortlisted').
+        
+    Returns:
+        list[dict]: A list of job row dictionaries.
     """
     with get_db_connection() as conn:
         cursor = conn.cursor()
@@ -182,7 +216,15 @@ def get_jobs(status: str = None) -> list[dict]:
         return [dict(row) for row in cursor.fetchall()]
 
 def get_job_by_id(job_id: str) -> dict | None:
-    """Get single job by job_id"""
+    """
+    Fetches a single job record by its unique ID.
+    
+    Args:
+        job_id (str): The unique Job ID.
+        
+    Returns:
+        dict | None: The job record or None if not found.
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,))
@@ -190,7 +232,12 @@ def get_job_by_id(job_id: str) -> dict | None:
         return dict(row) if row else None
 
 def get_stats() -> dict:
-    """Return counts grouped by status"""
+    """
+    Calculates summary statistics for the job board.
+    
+    Returns:
+        dict: Counts of jobs categorized by status, including a 'total' count.
+    """
     with get_db_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT status, COUNT(*) as count FROM jobs GROUP BY status")
@@ -209,15 +256,19 @@ def get_stats() -> dict:
         return stats
 
 
-# --- JSON Detached Storage Mechanisms ---
-
-def _safe_filename(name: str) -> str:
-    val = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', str(name))
-    return re.sub(r'_+', '_', val)
-
 def _get_readable_job_dir(job: dict) -> Path:
-    company = _safe_filename(job.get("company", "Unknown"))
-    title = _safe_filename(job.get("title", "Unknown"))
+    """
+    Constructs a human-readable directory name for storing job artifacts (Resume, JD).
+    Format: Company-Title-Date-ShortID
+    
+    Args:
+        job (dict): Job record.
+        
+    Returns:
+        Path: Target directory for local storage.
+    """
+    company = safe_filename(job.get("company", "Unknown"))
+    title = safe_filename(job.get("title", "Unknown"))
     
     date_str = ""
     found = job.get("found_at", "")
@@ -238,8 +289,14 @@ def _get_readable_job_dir(job: dict) -> Path:
 
 def save_job_details(job: dict) -> str:
     """
-    Save full JD text to local JSON in a human-readable folder.
-    Returns path to saved file.
+    Exports a job's metadata to a local JSON file within a dedicated application folder.
+    This provides a persistent 'filesystem-first' backup of high-value JD text.
+    
+    Args:
+        job (dict): Job metadata.
+        
+    Returns:
+        str: Absolute path to the saved JSON file.
     """
     if job.get('score', 0) < 6 or job.get('status') == 'rejected':
         return ""
@@ -254,7 +311,16 @@ def save_job_details(job: dict) -> str:
     return str(details_path)
 
 def load_job_details(job_id: str) -> dict | None:
-    """Load full JD from local JSON by searching for job_id in directory name"""
+    """
+    Loads saved job metadata from the 'outputs/applications' directory.
+    Searches by searching for the job_id prefix in directory names.
+    
+    Args:
+        job_id (str): The unique Job ID.
+        
+    Returns:
+        dict | None: The loaded job details or None if not found.
+    """
     base = Path("outputs/applications")
     if not base.exists() and Path("../outputs/applications").exists():
         base = Path("../outputs/applications")
@@ -295,6 +361,10 @@ def load_job_details(job_id: str) -> dict | None:
     
 # --- Migration logic from CSV ---
 def migrate_csv_to_db():
+    """
+    Handles one-time migration of job data from legacy CSV files to the SQLite DB.
+    Ensures no data is lost during the architectural refactor.
+    """
     import csv
     csv_path = Path("tracked_jobs.csv")
     if not csv_path.exists() and Path("backend/tracked_jobs.csv").exists():

@@ -2,7 +2,21 @@ from pathlib import Path
 
 def parse_candidate_profile(filepath: Path) -> dict:
     """
-    Parses the candidate_profile.md into a dictionary for use by the scorer.
+    Parses the candidate's master profile Markdown file into a structured dictionary.
+    This dictionary is used by the scoring engine and resume generator to ensure
+    fact-based tailoring.
+    
+    Expected Markdown Structure:
+    - ## Background (contains skills/degree)
+    - ## Target Roles
+    - ## Preferences
+    
+    Args:
+        filepath (Path): Path to 'candidate_profile.md'.
+        
+    Returns:
+        dict: A dictionary containing 'target_roles', 'skills', 
+              'experience_level', and 'preferences' as formatted strings.
     """
     profile = {
         "target_roles": [],
@@ -36,7 +50,7 @@ def parse_candidate_profile(filepath: Path) -> dict:
         elif current_section == "Preferences":
             profile["preferences"].append(value)
             
-    # Format for scorer
+    # Format for scorer: join lists into searchable strings
     return {
         "target_roles": ", ".join(profile["target_roles"]),
         "skills": " | ".join(profile["skills"]),
