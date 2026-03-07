@@ -214,12 +214,19 @@ Return ONLY the rewritten LaTeX lines now."""
     return sanitize_llm_latex(resp.choices[0].message.content.strip())
 
 
-def rewrite_skills_section(current_text: str, keywords: dict) -> str:
+def rewrite_skills_section(current_text: str, keywords: dict, context_bank: dict) -> str:
     """
     Specialized rewriter for the Skills section.
-    Only adds/reorders keywords — NEVER converts to bullet points.
+    Aggressively cross-references JD keywords with the candidate's master skills.md bank.
     """
     kw_str = json.dumps(keywords, indent=2)
+    
+    # Load candidate's master skills file
+    skills_md = ""
+    skills_path = Path(__file__).parent.parent.parent / "profile" / "skills.md"
+    if skills_path.exists():
+        with open(skills_path, "r", encoding="utf-8") as f:
+            skills_md = f.read()
 
     system = r"""You are a LaTeX resume editor. You are editing ONLY a Skills section.
 
@@ -232,11 +239,11 @@ FORMAT:
 - Do NOT add conversational text, markdown, or explanations.
 - Output ONLY the formatted skill lines, nothing else.
 
-ADDING SKILLS:
-- You may ADD relevant ENGINEERING skills from JD keywords.
+ADDING SKILLS (AGGRESSIVE INJECTION):
+- You are provided with a MASTER SKILLS BANK. You MUST cross reference the JD Keywords against this Master Skills Bank.
+- If the JD asks for a skill, AND it exists ANYWHERE in the Master Skills Bank, you MUST inject it into the resume skills section.
+- You are permitted to add missing keywords like "LangChain", "Agentic Workflows", "Vector Databases", "Docker", "Kubernetes", "Prompt Engineering", etc. as long as they are related to what the JD is asking for and are present in the candidate's master skills.
 - Integrate new skills NATURALLY into the existing category lines.
-  Example: If "LLMs" or "Generative AI" should be added, place them
-  in the existing AI/ML line, not as a new appended phrase.
 - You may REORDER skills to front-load JD-relevant ones.
 - Do NOT remove existing skills.
 
@@ -258,6 +265,9 @@ Example output:
     user_msg = f"""JD KEYWORDS:
 {kw_str}
 
+MASTER SKILLS BANK (Use this as unquestionable truth for candidate capability):
+{skills_md}
+
 CURRENT SKILLS SECTION:
 {current_text}
 
@@ -267,7 +277,7 @@ Return the updated skills lines now."""
     resp = client.chat.completions.create(
         model=get_model_name(),
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user_msg}],
-        temperature=0.3
+        temperature=0.4
     )
     result = sanitize_llm_latex(resp.choices[0].message.content.strip())
 
@@ -352,7 +362,7 @@ def _generate_tailored_content(job_description: str, sections: dict, context_ban
         if "SKILLS" in sec_upper:
             print(f"Tailoring section (skills mode): {section_name}")
             rewritten[section_name] = rewrite_skills_section(
-                sec_data["content"], keywords
+                sec_data["content"], keywords, context_bank
             )
             continue
 

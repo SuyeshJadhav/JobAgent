@@ -3,6 +3,8 @@ Shared URL normalization and matching utilities for all routers.
 Handles ATS-specific domain patterns (Workday, Greenhouse, Lever, Paradox, etc.)
 """
 from urllib.parse import urlparse, parse_qsl, urlencode
+import hashlib
+import re
 
 def normalize_url(url: str) -> str:
     """Normalize domain and path while preserving critical job identification query params."""
@@ -28,6 +30,32 @@ def normalize_url(url: str) -> str:
         norm += '?' + new_query
         
     return norm.lower()
+
+
+def generate_deterministic_job_id(company_name: str, url: str) -> str:
+    """
+    Generate a deterministic 12-character MD5 hash based on company name and normalized ATS ID/URL.
+    """
+    if not url:
+        return ""
+        
+    extracted_id = ""
+    # Workday regex: e.g. /job/.../Title_JR-12345
+    wd_match = re.search(r'_(JR-\d+(?:-\d+)?)', url, re.IGNORECASE)
+    
+    if wd_match:
+        extracted_id = wd_match.group(1).upper()
+    else:
+        # Fallback / Greenhouse / Lever
+        parsed = urlparse(url if url.startswith('http') else 'https://' + url)
+        path = parsed.path.rstrip('/')
+        # Strip language tags like /en-us or /en_US
+        path = re.sub(r'^/[a-z]{2}(?:[-_][a-z]{2,3})?(?=/|$)', '', path, flags=re.IGNORECASE)
+        extracted_id = path.strip('/')
+        
+    comp = (company_name or "").strip().lower()
+    raw_string = f"{comp}::{extracted_id.lower()}"
+    return hashlib.md5(raw_string.encode('utf-8')).hexdigest()[:12]
 
 
 def extract_ats_domain(url: str) -> str:

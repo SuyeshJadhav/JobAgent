@@ -152,15 +152,15 @@ function injectSuggestionButton(inputEl, question) {
 	btn.dataset.jobagentSuggestBtn = 'true';
 	Object.assign(btn.style, {
 		display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-		marginTop: '6px', marginBottom: '12px', padding: '5px 10px',
-		fontSize: '12px', fontWeight: '600', color: '#fff',
-		background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-		border: 'none', borderRadius: '6px', cursor: 'pointer',
-		boxShadow: '0 2px 4px rgba(99,102,241,0.3)', transition: 'all 0.2s ease',
-		fontFamily: 'system-ui, sans-serif'
+		marginTop: '6px', marginBottom: '12px', padding: '8px 16px',
+		fontSize: '12px', fontWeight: 'bold', color: '#000',
+		background: '#fff',
+		border: '2px solid #000', borderRadius: '0', cursor: 'pointer',
+		boxShadow: '4px 4px 0px #000', transition: 'all 0.1s ease',
+		fontFamily: 'monospace'
 	});
-	btn.addEventListener('mouseenter', () => btn.style.transform = 'translateY(-1px)');
-	btn.addEventListener('mouseleave', () => btn.style.transform = 'translateY(0)');
+	btn.addEventListener('mouseenter', () => { btn.style.transform = 'translate(2px, 2px)'; btn.style.boxShadow = '2px 2px 0px #000'; btn.style.background = '#000'; btn.style.color = '#fff'; });
+	btn.addEventListener('mouseleave', () => { btn.style.transform = 'translate(0, 0)'; btn.style.boxShadow = '4px 4px 0px #000'; btn.style.background = '#fff'; btn.style.color = '#000'; });
 	btn.addEventListener('click', async (e) => { e.preventDefault(); await handleSuggestClick(btn, inputEl, question); });
 	if (inputEl.nextSibling) inputEl.parentNode.insertBefore(btn, inputEl.nextSibling);
 	else inputEl.parentNode.appendChild(btn);
@@ -254,33 +254,35 @@ function buildFAM() {
 	Object.assign(root.style, {
 		position: 'fixed', right: '0', top: '30%',
 		zIndex: '999999', display: 'flex', flexDirection: 'row',
-		fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+		fontFamily: 'monospace',
 		transition: 'transform 0.25s ease',
 	});
 
 	// ── Toggle Tab ──
 	const toggle = document.createElement('button');
 	toggle.id = 'jobagent-fam-toggle';
-	toggle.textContent = '🎯';
+	toggle.textContent = 'AGENT';
 	toggle.type = 'button';
 	Object.assign(toggle.style, {
-		width: '36px', height: '36px', border: 'none', cursor: 'pointer',
-		background: 'linear-gradient(180deg, #4f46e5, #6366f1)',
-		color: '#fff', fontSize: '18px', borderRadius: '8px 0 0 8px',
+		width: 'auto', height: 'auto', border: '2px solid #000', cursor: 'pointer',
+		background: '#00ff00', padding: '10px',
+		color: '#000', fontSize: '14px', borderRadius: '0', fontWeight: 'bold',
 		display: 'flex', alignItems: 'center', justifyContent: 'center',
-		boxShadow: '-2px 2px 8px rgba(0,0,0,0.2)',
-		transition: 'background 0.2s ease',
+		boxShadow: '-4px 4px 0px #000',
+		transition: 'all 0.1s ease',
 		alignSelf: 'flex-start',
+		writingMode: 'vertical-rl',
+		textOrientation: 'mixed'
 	});
 
 	// ── Panel ──
 	const panel = document.createElement('div');
 	panel.id = 'jobagent-fam-panel';
 	Object.assign(panel.style, {
-		width: '0px', background: '#1e1b2e',
-		borderRadius: '12px 0 0 12px', padding: '14px 0',
-		display: 'flex', flexDirection: 'column', gap: '10px',
-		boxShadow: '-4px 4px 20px rgba(0,0,0,0.35)',
+		width: '0px', background: '#f4f4f0', border: 'none',
+		borderRadius: '0', padding: '14px 0',
+		display: 'flex', flexDirection: 'column', gap: '12px',
+		boxShadow: '-6px 6px 0px #000',
 		transition: 'width 0.25s ease, padding 0.25s ease, opacity 0.25s ease',
 		overflow: 'hidden',
 		opacity: '0',
@@ -290,12 +292,14 @@ function buildFAM() {
 	toggle.addEventListener('click', () => {
 		panelOpen = !panelOpen;
 		if (panelOpen) {
-			panel.style.width = '220px';
-			panel.style.padding = '14px 12px';
+			panel.style.width = '240px';
+			panel.style.padding = '16px 16px';
+			panel.style.border = '2px solid #000';
 			panel.style.opacity = '1';
 		} else {
 			panel.style.width = '0px';
 			panel.style.padding = '14px 0';
+			panel.style.border = 'none';
 			panel.style.opacity = '0';
 		}
 	});
@@ -304,10 +308,10 @@ function buildFAM() {
 	const badge = document.createElement('div');
 	badge.id = 'jobagent-fam-badge';
 	Object.assign(badge.style, {
-		fontSize: '11px', color: '#a5b4fc', textAlign: 'center',
-		padding: '2px 0 4px 0', letterSpacing: '0.5px',
-		borderBottom: '1px solid rgba(255,255,255,0.08)',
-		marginBottom: '4px', fontWeight: '500',
+		fontSize: '12px', color: '#000', textAlign: 'center',
+		padding: '4px 0 8px 0', letterSpacing: '0px',
+		borderBottom: '2px solid #000',
+		marginBottom: '8px', fontWeight: 'bold', textTransform: 'uppercase'
 	});
 	badge.textContent = 'JobAgent';
 	panel.appendChild(badge);
@@ -331,25 +335,42 @@ function buildFAM() {
 }
 
 /** Creates a styled button for the FAM panel */
-function createFAMButton(id, text, gradient, shadowColor) {
+function createFAMButton(id, text, isPrimary = false) {
 	const btn = document.createElement('button');
 	btn.id = id;
 	btn.textContent = text;
 	btn.type = 'button';
+	
+	const bg = isPrimary ? '#00ff00' : '#fff';
+	const fg = '#000';
+
 	Object.assign(btn.style, {
-		width: '100%', border: 'none', cursor: 'pointer',
-		padding: '10px 12px', borderRadius: '8px',
-		fontSize: '13px', fontWeight: '600', color: '#fff',
-		background: gradient,
-		boxShadow: `0 3px 10px ${shadowColor}`,
-		transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-		fontFamily: 'inherit', letterSpacing: '0.2px',
+		width: '100%', border: '2px solid #000', cursor: 'pointer',
+		padding: '12px 16px', borderRadius: '0',
+		fontSize: '14px', fontWeight: 'bold', color: fg,
+		background: bg,
+		boxShadow: '4px 4px 0px #000',
+		transition: 'all 0.1s ease',
+		fontFamily: 'monospace', letterSpacing: '0',
+		textTransform: 'uppercase'
 	});
 	btn.addEventListener('mouseenter', () => {
-		btn.style.transform = 'translateY(-1px)';
+		if (isPrimary) {
+			btn.style.transform = 'translate(2px, 2px)';
+			btn.style.boxShadow = '2px 2px 0px #000';
+		} else {
+			btn.style.background = '#000';
+			btn.style.color = '#fff';
+		}
 	});
 	btn.addEventListener('mouseleave', () => {
-		btn.style.transform = 'translateY(0)';
+		if (isPrimary) {
+			btn.style.transform = 'translate(0, 0)';
+			btn.style.boxShadow = '4px 4px 0px #000';
+		} else {
+			btn.style.background = '#fff';
+			btn.style.color = '#000';
+		}
 	});
 	return btn;
 }
@@ -368,32 +389,25 @@ function renderFAMActions() {
 
 	// ── UNTRACKED: Show "Track & Score" ──
 	if (state === STATE.UNTRACKED) {
-		const btn = createFAMButton(
-			'ja-track', '📥 Track & Score Job',
-			'linear-gradient(135deg, #3b82f6, #2563eb)', 'rgba(59,130,246,0.4)'
-		);
+		const btn = createFAMButton('ja-track', '📥 Track & Score', true);
 		btn.addEventListener('click', handleTrackClick);
 		container.appendChild(btn);
 	}
 
 	// ── TRACKED: Show "Tailor & Preview" ──
 	if (state === STATE.TRACKED) {
-		const btn = createFAMButton(
-			'ja-tailor', '📄 Tailor & Preview Resume',
-			'linear-gradient(135deg, #8b5cf6, #7c3aed)', 'rgba(139,92,246,0.4)'
-		);
+		const btn = createFAMButton('ja-tailor', '📄 Tailor Resume', true);
 		btn.addEventListener('click', handleTailorClick);
 		container.appendChild(btn);
 	}
 
 	// ── TAILORED / PREVIEWED: Show "Preview" and "Inject" ──
 	if (state === STATE.TAILORED || state === STATE.PREVIEWED) {
-		const btnPreview = createFAMButton(
-			'ja-preview-btn', '🔍 Re-Preview PDF',
-			'linear-gradient(135deg, #6366f1, #4f46e5)', 'rgba(99,102,241,0.3)'
-		);
+		const btnPreview = createFAMButton('ja-preview-btn', '🔍 Preview PDF', false);
 		btnPreview.addEventListener('click', () => {
-			if (window._ja.pendingResume) {
+			if (window._ja.pendingResume && window._ja.pendingResume.url) {
+				window.open(window._ja.pendingResume.url, '_blank');
+			} else if (window._ja.pendingResume) {
 				const blob = base64ToBlob(window._ja.pendingResume.base64);
 				const url = URL.createObjectURL(blob);
 				window.open(url, '_blank');
@@ -401,23 +415,20 @@ function renderFAMActions() {
 		});
 		container.appendChild(btnPreview);
 
-		const btnInject = createFAMButton(
-			'ja-inject-btn', '💉 Inject & Apply',
-			'linear-gradient(135deg, #10b981, #059669)', 'rgba(16,185,129,0.4)'
-		);
+		const btnInject = createFAMButton('ja-inject-btn', '💉 Inject & Apply', true);
 		btnInject.addEventListener('click', () => handleInjectClick(btnInject));
 		container.appendChild(btnInject);
 	}
 
 	// ── APPLIED: Show "Done" (disabled) ──
 	if (state === STATE.APPLIED) {
-		const btn = createFAMButton(
-			'ja-done', '✅ Applied & Cleaned',
-			'linear-gradient(135deg, #10b981, #059669)', 'rgba(16,185,129,0.3)'
-		);
+		const btn = createFAMButton('ja-done', '✅ Applied', false);
 		btn.disabled = true;
 		btn.style.cursor = 'default';
-		btn.style.opacity = '0.8';
+		btn.style.opacity = '0.5';
+		btn.style.boxShadow = 'none';
+		btn.style.transform = 'none';
+		btn.style.borderStyle = 'dashed';
 		container.appendChild(btn);
 	}
 
@@ -425,13 +436,11 @@ function renderFAMActions() {
 	if (state === STATE.TRACKED || state === STATE.TAILORED || state === STATE.PREVIEWED) {
 		// Only add if not already the primary
 		if (state === STATE.TRACKED || state === STATE.PREVIEWED || state === STATE.TAILORED) {
-			const btn2 = createFAMButton(
-				'ja-applied-secondary', '🏁 Mark Applied',
-				'linear-gradient(135deg, #f59e0b, #d97706)', 'rgba(245,158,11,0.3)'
-			);
-			btn2.style.opacity = '0.7';
-			btn2.style.fontSize = '11px';
-			btn2.style.padding = '7px 10px';
+			const btn2 = createFAMButton('ja-applied-secondary', '🏁 Mark Applied', false);
+			Object.assign(btn2.style, {
+				padding: '8px 10px',
+				fontSize: '12px'
+			});
 			btn2.addEventListener('click', handleMarkAppliedClick);
 			container.appendChild(btn2);
 		}
@@ -443,7 +452,7 @@ function renderFAMActions() {
 		const job = window._ja.job;
 		if (job && job.job_id) {
 			const score = job.score ? ` · ${job.score}/10` : '';
-			badge.textContent = `JobAgent${score}`;
+			badge.textContent = `JOBAGENT${score}`;
 		}
 	}
 }
@@ -474,10 +483,10 @@ async function handleTrackClick() {
 
 			if (d.job_status === 'shortlisted') {
 				btn.textContent = `✅ Tracked! Score: ${d.score}/10`;
-				btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+				btn.style.background = '#00ff00';
 			} else {
 				btn.textContent = `⚠️ Score: ${d.score}/10 (${d.job_status})`;
-				btn.style.background = 'linear-gradient(135deg, #ef4444, #dc2626)';
+				btn.style.background = '#ff0000';
 			}
 
 			// Transition state after a brief pause
@@ -511,15 +520,14 @@ async function handleTailorClick() {
 		if (res && res.status === 200 && res.data) {
 			const { resume_base64, filename, job_id } = res.data;
 
-			window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf' };
-
-			// ── Open PDF in new tab automatically ──
+			// Store Base64/Blob URL
 			const blob = base64ToBlob(resume_base64);
 			const url = URL.createObjectURL(blob);
-			window.open(url, '_blank');
+			window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf', url: url };
 
 			btn.textContent = '✅ Resume Ready';
-			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+			btn.style.background = '#fff';
+			btn.style.color = '#000';
 
 			// ── Persist to chrome.storage.local ──
 			const jid = job_id || window._ja.job?.job_id;
@@ -527,22 +535,20 @@ async function handleTailorClick() {
 				try { chrome.storage.local.set({ [`tailored_${jid}`]: true }); } catch (e) { /* ok */ }
 			}
 
-			// Transition to PREVIEWED state
-			setTimeout(() => {
-				window._ja.state = STATE.PREVIEWED;
-				renderFAMActions();
-			}, 1500);
+			// Transition to PREVIEWED state IMMEDIATELY
+			window._ja.state = STATE.PREVIEWED;
+			renderFAMActions();
 		} else if (res && res.status === 404) {
 			btn.textContent = '❌ Job Not Found';
-			setTimeout(() => { btn.textContent = '📄 Tailor & Preview Resume'; btn.disabled = false; }, 3000);
+			setTimeout(() => { btn.textContent = '📄 Tailor Resume'; btn.disabled = false; }, 3000);
 		} else {
 			btn.textContent = '❌ Error';
-			setTimeout(() => { btn.textContent = '📄 Tailor & Preview Resume'; btn.disabled = false; }, 3000);
+			setTimeout(() => { btn.textContent = '📄 Tailor Resume'; btn.disabled = false; }, 3000);
 		}
 	} catch (e) {
 		console.error('[JobAgent] Tailor error:', e);
 		btn.textContent = '❌ Error';
-		setTimeout(() => { btn.textContent = '📄 Tailor & Preview Resume'; btn.disabled = false; }, 3000);
+		setTimeout(() => { btn.textContent = '📄 Tailor Resume'; btn.disabled = false; }, 3000);
 	}
 }
 
@@ -564,7 +570,8 @@ async function handleInjectClick(btn) {
 		const ok = injectStoredResume(fi, base64, filename);
 		if (ok) {
 			btn.textContent = '✅ Injected!';
-			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+			btn.style.background = '#fff';
+			btn.style.color = '#000';
 			window._ja.resumeInjected = true;
 			setTimeout(() => {
 				window._ja.state = STATE.PREVIEWED;
@@ -588,7 +595,8 @@ async function handleInjectClick(btn) {
 		URL.revokeObjectURL(url);
 
 		btn.textContent = '📥 Downloaded!';
-		btn.style.background = 'linear-gradient(135deg, #f59e0b, #d97706)';
+		btn.style.background = '#fff';
+		btn.style.color = '#000';
 		window._ja.resumeInjected = true;
 
 		setTimeout(() => {
@@ -614,7 +622,8 @@ async function handleMarkAppliedClick() {
 		if (res && res.status === 200 && res.data) {
 			const shredCount = res.data.shredded ? res.data.shredded.length : 0;
 			btn.textContent = `✅ SSD Clean (${shredCount} shredded)`;
-			btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+			btn.style.background = '#fff';
+			btn.style.color = '#000';
 			btn.style.cursor = 'default';
 
 			// ── Clear chrome.storage.local cache ──

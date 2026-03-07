@@ -151,7 +151,7 @@ class OrganicTrackRequest(BaseModel):
     company: Optional[str] = ""
     page_text: Optional[str] = ""
 
-from backend.utils.url_matcher import find_job_by_url, normalize_url
+from backend.utils.url_matcher import find_job_by_url, normalize_url, generate_deterministic_job_id
 
 @router.get("/check_url")
 def check_url_tracked(url: str):
@@ -169,23 +169,48 @@ def organic_track_and_score(payload: OrganicTrackRequest):
     and the full page text. We sanitize, score, and add to the tracker in
     one synchronous call, then return the result immediately.
     """
-    # 1. Generate a stable job_id from the URL
-    norm_url = normalize_url(payload.url)
-    job_id = hashlib.md5(norm_url.encode()).hexdigest()[:12]
+    # 1. Generate a stable job_id
+    job_id = generate_deterministic_job_id(payload.company, payload.url)
 
-    # 2. Check for duplicate
+    # 2. Sanitize page text into a JD
+    jd_text = trim_jd_text(payload.page_text) if payload.page_text else ""
+
+    # 3. Check for existing to enforce "Upsert" logic
     existing = get_job_by_id(job_id)
     if existing:
+        updated_job = dict(existing)
+        if payload.title:
+            updated_job['title'] = payload.title
+        if payload.company:
+            updated_job['company'] = payload.company
+        updated_job['description'] = jd_text
+        
+        # Update the database
+        update_job(
+            job_id,
+            title=updated_job['title'],
+            company=updated_job['company']
+        )
+        
+        # Update local JSON file if exists
+        if int(updated_job.get("score", 0)) >= 6 and updated_job.get("status") != "rejected":
+            save_job_details(updated_job)
+            
+        print(f"[UPSERT] Updated existing tracked job: {updated_job['title']} - {updated_job['company']}")
+        
+        # Sync to Excel
+        try:
+            sync_db_to_excel()
+        except Exception as e:
+            print(f"[SYNC ERROR] {e}")
+
         return {
-            "status": "duplicate",
+            "status": "upserted",
             "job_id": job_id,
             "score": int(existing.get("score", 0)),
             "job_status": existing.get("status", ""),
-            "message": "Job already tracked."
+            "message": "Job already tracked (data updated)."
         }
-
-    # 3. Sanitize page text into a JD
-    jd_text = trim_jd_text(payload.page_text) if payload.page_text else ""
 
     # 4. Build job dict
     job = {
