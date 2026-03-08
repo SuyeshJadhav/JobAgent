@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 from pathlib import Path
 
 from backend.services.resume_tailor import (
-    _inject_content_into_tex,
+    inject_content_into_tex,
     _compile_latex_to_pdf,
     run_tailor
 )
@@ -23,7 +23,7 @@ def test_inject_content_into_tex():
     
     tailored_content = {"SUMMARY": "Brand new tailored summary."}
     
-    result = _inject_content_into_tex(template_str, tailored_content, sections)
+    result = inject_content_into_tex(template_str, tailored_content, sections)
     
     expected = "\\begin{document}\n%% BEGIN SUMMARY %%\nBrand new tailored summary.\n%% END SUMMARY %%\n\\end{document}"
     
@@ -73,8 +73,8 @@ def test_compile_latex_to_pdf(mock_open, mock_exists, mock_pdf_reader, mock_run)
 @patch("backend.services.resume_tailor.parse_marker_sections")
 @patch("builtins.open", new_callable=MagicMock)
 @patch("backend.services.resume_tailor.json.dump")
-@patch("backend.services.resume_tailor._generate_tailored_content")
-@patch("backend.services.resume_tailor._inject_content_into_tex")
+@patch("backend.services.resume_tailor.generate_tailored_content")
+@patch("backend.services.resume_tailor.inject_content_into_tex")
 @patch("backend.services.resume_tailor._compile_latex_to_pdf")
 def test_run_tailor_pipeline(
     mock_compile, mock_inject, mock_generate,
