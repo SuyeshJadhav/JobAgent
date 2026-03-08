@@ -24,7 +24,13 @@ def parse_llm_json_response(content: str) -> tuple[int, str]:
         data = json.loads(cleaned)
         score = int(data.get("score", 0))
         reasoning = str(data.get("reasoning", ""))
-        return max(0, min(10, score)), reasoning
+
+        # Hallucination detection: If the LLM invents a large percentage like "75",
+        # it violates the strictly prompted 0-10 scale. Reject it entirely.
+        if score > 10:
+            return 0, "[REJECTED] LLM hallucinated an out-of-bounds score: " + str(score)
+
+        return max(0, score), reasoning
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
 
@@ -33,14 +39,20 @@ def parse_llm_json_response(content: str) -> tuple[int, str]:
     reason_match = re.search(r'"reasoning"\s*:\s*"([^"]*)"', content, re.DOTALL)
 
     score = int(score_match.group(1)) if score_match else 0
-    score = max(0, min(10, score))
+
+    if score > 10:
+        return 0, "[REJECTED] LLM hallucinated an out-of-bounds score: " + str(score)
+
+    score = max(0, score)
     reason = reason_match.group(1).strip() if reason_match else content.strip()[:300]
 
     if not score_match:
         # Last resort: find any number
         fst = re.search(r"\b(\d{1,2})\b", content)
         score = int(fst.group(1)) if fst else 0
-        score = max(0, min(10, score))
+        if score > 10:
+            return 0, "[REJECTED] LLM hallucinated an out-of-bounds score: " + str(score)
+        score = max(0, score)
 
     return score, reason
 
