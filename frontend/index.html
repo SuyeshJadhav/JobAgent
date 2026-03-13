@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JobAgent — Dashboard</title>
+    <meta name="description" content="JobAgent: AI-powered job application tracker and resume tailor dashboard.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+    <!-- ─── Top Navigation Bar ─── -->
+    <nav id="navbar">
+        <div class="nav-left">
+            <span class="logo">JOB<span class="logo-accent">AGENT</span></span>
+            <span class="nav-divider">|</span>
+            <span class="nav-label">DASHBOARD</span>
+        </div>
+        <div class="nav-right">
+            <button id="btn-run-scout" class="nav-btn scout-btn" title="Run Scout Pipeline">
+                <span class="btn-icon">🔍</span> Run Scout
+            </button>
+            <button id="btn-tailor-all" class="nav-btn tailor-btn" title="Tailor All Shortlisted">
+                <span class="btn-icon">📄</span> Tailor All
+            </button>
+            <button id="btn-refresh" class="nav-btn refresh-btn" title="Refresh Data">
+                <span class="btn-icon">↻</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- ─── Stats Strip ─── -->
+    <section id="stats-strip">
+        <div class="stat-card" data-status="total">
+            <div class="stat-value" id="stat-total">-</div>
+            <div class="stat-label">Total</div>
+        </div>
+        <div class="stat-card" data-status="found">
+            <div class="stat-value" id="stat-found">-</div>
+            <div class="stat-label">Found</div>
+        </div>
+        <div class="stat-card" data-status="shortlisted">
+            <div class="stat-value" id="stat-shortlisted">-</div>
+            <div class="stat-label">Shortlisted</div>
+        </div>
+        <div class="stat-card" data-status="tailored">
+            <div class="stat-value" id="stat-tailored">-</div>
+            <div class="stat-label">Tailored</div>
+        </div>
+        <div class="stat-card" data-status="applied">
+            <div class="stat-value" id="stat-applied">-</div>
+            <div class="stat-label">Applied</div>
+        </div>
+        <div class="stat-card" data-status="rejected">
+            <div class="stat-value" id="stat-rejected">-</div>
+            <div class="stat-label">Rejected</div>
+        </div>
+    </section>
+
+    <!-- ─── Filters ─── -->
+    <section id="filters-bar">
+        <div class="filter-group">
+            <label for="filter-status">Status</label>
+            <select id="filter-status">
+                <option value="">All</option>
+                <option value="found">Found</option>
+                <option value="shortlisted">Shortlisted</option>
+                <option value="tailored">Tailored</option>
+                <option value="applied">Applied</option>
+                <option value="interviewing">Interviewing</option>
+                <option value="rejected">Rejected</option>
+                <option value="skipped">Skipped</option>
+                <option value="failed">Failed</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label for="filter-search">Search</label>
+            <input type="text" id="filter-search" placeholder="Company, title, or ID...">
+        </div>
+        <div class="filter-group">
+            <label for="filter-sort">Sort</label>
+            <select id="filter-sort">
+                <option value="last_updated">Last Updated</option>
+                <option value="score">Score</option>
+                <option value="company">Company</option>
+                <option value="title">Title</option>
+            </select>
+        </div>
+    </section>
+
+    <!-- ─── Jobs Table ─── -->
+    <main id="main-content">
+        <div id="jobs-table-wrapper">
+            <table id="jobs-table">
+                <thead>
+                    <tr>
+                        <th class="col-score">Score</th>
+                        <th class="col-company">Company</th>
+                        <th class="col-title">Title</th>
+                        <th class="col-status">Status</th>
+                        <th class="col-location">Location</th>
+                        <th class="col-source">Source</th>
+                        <th class="col-date">Found</th>
+                        <th class="col-actions">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="jobs-tbody">
+                    <tr><td colspan="8" class="empty-state">Loading jobs...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pagination-controls" class="pagination-controls">
+            <button id="btn-prev-page" class="nav-btn" disabled>← Previous</button>
+            <span id="pagination-info" class="pagination-info">Page 1 of 1</span>
+            <button id="btn-next-page" class="nav-btn" disabled>Next →</button>
+        </div>
+    </main>
+
+    <!-- ─── Job Detail Modal ─── -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <button id="modal-close" class="modal-close">&times;</button>
+            <div id="modal-body">
+                <!-- Filled dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ─── Toast Notifications ─── -->
+    <div id="toast-container"></div>
+
+    <script src="app.js?v=2"></script>
+</body>
+</html>

@@ -71,7 +71,21 @@ function extractQuestion(el) {
 }
 
 function injectReactSafeValue(element, value) {
-	element.value = value;
+	try {
+		const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+		const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+		
+		if (element.tagName === 'TEXTAREA' && nativeTextAreaValueSetter) {
+			nativeTextAreaValueSetter.call(element, value);
+		} else if (element.tagName === 'INPUT' && nativeInputValueSetter) {
+			nativeInputValueSetter.call(element, value);
+		} else {
+			element.value = value;
+		}
+	} catch (e) {
+		element.value = value;
+	}
+	
 	element.dispatchEvent(new Event('input', { bubbles: true }));
 	element.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -102,21 +116,107 @@ function sendBgMessage(action, payload) {
 }
 
 function extractPageTitle() {
+	// Generic words that are page sections, NOT real job titles
+	const GARBAGE = new Set(['careers', 'career', 'jobs', 'job boards', 'career opportunities',
+		'hiring', 'opportunities', 'internship', 'apply', 'position', 'openings',
+		'home', 'search', 'results', 'welcome', 'about']);
+
+	const _isGarbage = (s) => !s || GARBAGE.has(s.toLowerCase().trim());
+
+	// 1. ATS-specific selectors (most reliable)
+	const atsSelectors = [
+		'[data-automation-id="jobPostingHeader"]',  // Workday
+		'.app-title',                                // Greenhouse
+		'.posting-headline h2',                      // Lever
+		'.job-title',                                // SmartRecruiters / generic
+		'.jv-job-detail-header h1',                  // Jobvite
+		'[class*="jobTitle"]',                       // Generic ATS
+		'[class*="job-title"]',                      // Generic ATS
+	];
+	for (const sel of atsSelectors) {
+		try {
+			const el = document.querySelector(sel);
+			if (el && el.textContent.trim().length > 3 && !_isGarbage(el.textContent.trim())) {
+				return el.textContent.trim();
+			}
+		} catch { /* skip invalid selectors */ }
+	}
+
+	// 2. H1 within main content area (skip nav/header h1s)
+	const mainH1 = document.querySelector('main h1, article h1, [role="main"] h1');
+	if (mainH1 && mainH1.textContent.trim().length > 3 && !_isGarbage(mainH1.textContent.trim())) {
+		return mainH1.textContent.trim();
+	}
+
+	// 3. Any h1 on the page
 	const h1 = document.querySelector('h1');
-	if (h1 && h1.textContent.trim().length > 3) return h1.textContent.trim();
+	if (h1 && h1.textContent.trim().length > 3 && !_isGarbage(h1.textContent.trim())) {
+		return h1.textContent.trim();
+	}
+
+	// 4. OpenGraph title
 	const og = document.querySelector('meta[property="og:title"]');
-	if (og) return og.content.trim();
-	return document.title.split('|')[0].split('-')[0].trim();
+	if (og && og.content.trim().length > 3 && !_isGarbage(og.content.trim())) {
+		return og.content.trim();
+	}
+
+	// 5. Document title — take the first meaningful segment
+	const parts = document.title.split(/[|\-—–]/);
+	for (const p of parts) {
+		const t = p.trim();
+		if (t.length > 3 && !_isGarbage(t)) return t;
+	}
+	return document.title.trim() || 'Unknown Title';
 }
 
 function extractCompanyName() {
-	const wd = document.querySelector('[data-automation-id="company"]');
-	if (wd) return wd.textContent.trim();
+	// Generic words that are page sections, NOT real company names
+	const GARBAGE = new Set(['careers', 'career', 'jobs', 'job-boards', 'job boards',
+		'career opportunities', 'hiring', 'opportunities', 'internship', 'apply',
+		'position', 'openings', 'home', 'search', 'results', 'welcome', 'about']);
+
+	const _isGarbage = (s) => !s || GARBAGE.has(s.toLowerCase().trim());
+
+	// 1. ATS-specific selectors (most reliable)
+	const atsSelectors = [
+		'[data-automation-id="company"]',            // Workday
+		'.company-name',                             // Greenhouse
+		'[class*="company-name"]',                   // Generic ATS
+		'.posting-categories .sort-by-team',         // Lever
+		'[itemprop="hiringOrganization"] [itemprop="name"]', // Schema.org
+	];
+	for (const sel of atsSelectors) {
+		try {
+			const el = document.querySelector(sel);
+			if (el && el.textContent.trim().length > 1 && !_isGarbage(el.textContent.trim())) {
+				return el.textContent.trim();
+			}
+		} catch { /* skip invalid selectors */ }
+	}
+
+	// 2. OpenGraph site_name (very reliable when present)
 	const og = document.querySelector('meta[property="og:site_name"]');
-	if (og) return og.content.trim();
+	if (og && og.content.trim().length > 1 && !_isGarbage(og.content.trim())) {
+		return og.content.trim();
+	}
+
+	// 3. Document title — company is often the LAST segment after | or -
+	const parts = document.title.split(/[|\-—–]/);
+	if (parts.length > 1) {
+		const lastPart = parts[parts.length - 1].trim();
+		if (lastPart.length > 1 && !_isGarbage(lastPart)) return lastPart;
+	}
+
+	// 4. Hostname fallback (e.g., careers.netapp.com → Netapp)
 	try {
-		const h = window.location.hostname.replace('www.', '').split('.')[0];
-		return h.charAt(0).toUpperCase() + h.slice(1);
+		const host = window.location.hostname.replace('www.', '');
+		const parts = host.split('.');
+		// Skip common subdomains like 'careers', 'jobs', 'apply'
+		const meaningful = parts.find(p => !GARBAGE.has(p) && p.length > 2 && !['com', 'org', 'net', 'io', 'co'].includes(p));
+		if (meaningful) return meaningful.charAt(0).toUpperCase() + meaningful.slice(1);
+		// Fallback to second-level domain
+		const sld = parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+		return sld.charAt(0).toUpperCase() + sld.slice(1);
 	} catch { return 'Unknown'; }
 }
 
@@ -180,7 +280,8 @@ async function handleSuggestClick(btn, inputEl, question) {
 		if (res && res.status === 200 && res.data) {
 			const answers = res.data;
 			const nq = normalizeKey(question);
-			const mk = Object.keys(answers).find(k => normalizeKey(k) === nq);
+			const validKeys = Object.keys(answers).filter(k => k !== 'resume_base64' && k !== 'resume_filename');
+			const mk = validKeys.find(k => normalizeKey(k) === nq) || validKeys[0];
 			const ans = mk ? answers[mk] : null;
 			if (ans && !ans.startsWith('Error') && ans !== 'Could not generate answer.') {
 				injectReactSafeValue(inputEl, ans);

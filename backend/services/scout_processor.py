@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 from backend.services.jd_scraper import scrape_full_jd
-from backend.utils.text_cleaner import trim_jd_text, contains_bad_title, contains_dealbreakers, is_auto_shortlist_title, is_target_location
+from backend.utils.text_cleaner import trim_jd_text, contains_bad_title, contains_dealbreakers, is_auto_shortlist_title, is_target_location, is_garbage_metadata
 from backend.services.scorer import score_job
 from backend.services.db_tracker import (
     add_job, get_jobs, get_job_by_id,
@@ -96,7 +96,17 @@ class ScoutProcessor:
                             return
 
                         # Gate 5: LLM Scoring
-                        score, reason = score_job(job, self.profile)
+                        result = score_job(job, self.profile)
+                        score, reason = result["score"], result["reasoning"]
+                        
+                        # Fix garbage metadata using LLM-extracted values
+                        if is_garbage_metadata(job.get("company", ""), job.get("title", "")):
+                            if result.get("company"):
+                                job["company"] = result["company"]
+                            if result.get("title"):
+                                job["title"] = result["title"]
+                            update_job(job["job_id"], company=job["company"], title=job["title"])
+                            print(f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
                     
                     job["score"] = score
                     job["reason"] = reason
@@ -105,12 +115,14 @@ class ScoutProcessor:
                     if score >= self.threshold:
                         job["status"] = "shortlisted"
                         update_job(job["job_id"], status="shortlisted", score=score, reason=reason)
-                        save_job_details(job)
                         print(f"[WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
                     else:
                         job["status"] = "rejected"
                         update_job(job["job_id"], status="rejected", score=score, reason=reason)
                         print(f"[REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+                    
+                    # Always save details to allow manual tailoring overrides
+                    save_job_details(job)
 
                 except Exception as e:
                     print(f"[ERROR] processing {job.get('job_id')}: {e}")
@@ -154,12 +166,11 @@ class ScoutProcessor:
             
             update_job(job_id, title=updated_job['title'], company=updated_job['company'])
             
-            # Re-save details only if it was a viable job
-            if int(updated_job.get("score", 0)) >= 6 and updated_job.get("status") != "rejected":
-                save_job_details(updated_job)
+            # Always save updated details to allow manual tailoring overrides
+            save_job_details(updated_job)
                 
             print(f"[UPSERT] Updated existing tracked job: {updated_job['title']} - {updated_job['company']}")
-            self.safe_sync_excel()
+
             
             return {
                 "status": "upserted",
@@ -185,21 +196,35 @@ class ScoutProcessor:
         add_job(job)
 
         # Single-pass scoring for the organic find
-        score, reason = score_job(job, self.profile)
+        result = score_job(job, self.profile)
+        score, reason = result["score"], result["reasoning"]
+        
+        # Fix garbage metadata using LLM-extracted values
+        if is_garbage_metadata(job.get("company", ""), job.get("title", "")):
+            if result.get("company"):
+                job["company"] = result["company"]
+                update_job(job_id, company=job["company"])
+            if result.get("title"):
+                job["title"] = result["title"]
+                update_job(job_id, title=job["title"])
+            print(f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
+        
         job["score"] = score
         job["reason"] = reason
 
         if score >= self.threshold:
             job["status"] = "shortlisted"
             update_job(job_id, status="shortlisted", score=score, reason=reason)
-            save_job_details(job)
             print(f"[ORGANIC WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
         else:
             job["status"] = "rejected"
             update_job(job_id, status="rejected", score=score, reason=reason)
             print(f"[ORGANIC REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
 
-        self.safe_sync_excel()
+        # Always save details to allow manual tailoring overrides
+        save_job_details(job)
+
+
         return {
             "status": "tracked",
             "job_id": job_id,

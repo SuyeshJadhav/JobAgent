@@ -42,9 +42,6 @@ def get_sniper_answers(payload: AnswerRequest):
     elif payload.url:
         matched_job = find_job_by_url(jobs, payload.url)
                 
-    if not matched_job:
-        raise HTTPException(status_code=404, detail="Job not found in tracked jobs. Provide job_id.")
-        
     job_context = "No job description found."
     if matched_job:
         job_id = matched_job["job_id"]
@@ -132,13 +129,19 @@ def get_sniper_answers(payload: AnswerRequest):
                 
                 pdf_path = None
                 if score >= threshold:
-                    # Check for tailored PDF
-                    tailored_dir = Path("outputs/applications") / job_id
-                    pdf_files = list(tailored_dir.glob("*.pdf"))
-                    if pdf_files:
-                        pdf_path = pdf_files[0]
-                
-                if not pdf_path and score >= threshold:
+                    # Search for tailored PDF in human-readable directories
+                    short_id = job_id[:8]
+                    output_base = Path("outputs/applications")
+                    if not output_base.exists() and Path("../outputs/applications").exists():
+                        output_base = Path("../outputs/applications")
+                        
+                    if output_base.exists():
+                        for d in output_base.iterdir():
+                            if d.is_dir() and short_id in d.name:
+                                pdf_files = list(d.glob("*.pdf"))
+                                if pdf_files:
+                                    pdf_path = pdf_files[0]
+                                    break
                     # Load default resume
                     default_path = PROFILE_DIR / "resume.pdf"
                     if default_path.exists():

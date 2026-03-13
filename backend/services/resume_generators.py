@@ -141,6 +141,8 @@ CONTENT INTEGRITY & ANTI-HALLUCINATION (BREAKING THIS IS A FATAL ERROR):
 - Do NOT output preambles like "Here are the updated bullets:".
 - Do NOT output dummy examples like "Software Engineer, XYZ Corp" etc.
 - Do NOT reinvent and add random tools to the EXPERIENCE section bullets.
+- NEVER add your own parenthetical commentary or conceptual tags to the end of bullets (e.g., NEVER add "(performance analysis)" or "(performance improvement)").
+- NEVER copy subjective modifiers or parenthetical notes from the JD (e.g., if JD says "Python (primarily within JupyterHub)", use ONLY "Python" if it's in the actual context).
 
 TENSE & GRAMMAR LOCK (CRITICAL):
 - You MUST maintain the EXACT tense of the original bullet.
@@ -217,16 +219,19 @@ FORMAT:
 - Lines are separated by \\.
 - Output ONLY the formatted skill lines, nothing else.
 
-ADDING SKILLS (AGGRESSIVE INJECTION):
-- You are provided with a MASTER SKILLS BANK. You MUST cross reference the JD Keywords against this Master Skills Bank.
-- If the JD asks for a skill, AND it exists ANYWHERE in the Master Skills Bank, you MUST inject it into the resume skills section.
-- You are permitted to add missing keywords like "LangChain", "Agentic Workflows", "Vector Databases", "Docker", "Kubernetes", "Prompt Engineering", etc. as long as they are related to what the JD is asking for and are present in the candidate's master skills.
-- Integrate new skills NATURALLY into the existing category lines.
-- You may REORDER skills to front-load JD-relevant ones.
-- Do NOT remove existing skills.
+STRICT EXTRACTION AND PRUNING (CRITICAL):
+- You MUST reduce the skills layout to a STRICT MAXIMUM of 4 or 5 category lines.
+- Evaluate the MASTER SKILLS BANK and pick EXACTLY 4 or 5 categories that are most relevant to the JD Keywords.
+- You must use the EXACT category names from the MASTER SKILLS BANK (but formatted nicely, e.g., \textbf{Backend Frameworks:}).
+- You must use ONLY the EXACT skills listed within those categories in the MASTER SKILLS BANK.
+- DO NOT invent any new skills, even if the JD asks for them. If it is not in the MASTER SKILLS BANK, the candidate does not know it.
+- DO NOT invent any new categories.
+- You may REORDER the skills within a category to prioritize those mentioned in the JD.
+- Delete all other categories to save space.
 
 BLOCKLIST (NEVER add these to an engineering resume):
 - Microsoft Word, Excel, Slack, Zoom, Jira, Confluence, etc.
+- NEVER copy subjective modifiers or parenthetical notes from the JD (e.g., if JD says "Python (primarily Jupyter)", use ONLY "Python").
 
 LaTeX ESCAPING:
 - C# → C\#     & → \&     % → \%

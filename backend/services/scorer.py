@@ -4,7 +4,7 @@ import json
 from backend.services.llm_client import get_llm_client, get_model_name, get_settings
 
 
-def parse_llm_json_response(content: str) -> tuple[int, str]:
+def parse_llm_json_response(content: str) -> dict:
     """
     Parses structured JSON from the LLM response. 
     Includes robust fallback logic using regex if the JSON is malformed or 
@@ -14,35 +14,43 @@ def parse_llm_json_response(content: str) -> tuple[int, str]:
         content (str): Raw string content from the LLM.
         
     Returns:
-        tuple[int, str]: (score, reasoning)
+        dict: {score: int, reasoning: str, company: str, title: str, strategy: str}
     """
+    result = {"score": 0, "reasoning": "", "company": "", "title": "", "strategy": "skills_only"}
+    
     # ── Try direct JSON parse ──
     try:
         # Strip markdown fences if present
         cleaned = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
         cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
         data = json.loads(cleaned)
-        score = int(data.get("score", 0))
-        reasoning = str(data.get("reasoning", ""))
-        return max(0, min(10, score)), reasoning
+        result["score"] = max(0, min(10, int(data.get("score", 0))))
+        result["reasoning"] = str(data.get("reasoning", ""))
+        result["company"] = str(data.get("company", "")).strip()
+        result["title"] = str(data.get("title", "")).strip()
+        result["strategy"] = str(data.get("strategy", "skills_only"))
+        return result
     except (json.JSONDecodeError, ValueError, TypeError):
         pass
 
     # ── Fallback: regex extraction ──
     score_match = re.search(r'"score"\s*:\s*(\d+)', content)
     reason_match = re.search(r'"reasoning"\s*:\s*"([^"]*)"', content, re.DOTALL)
+    company_match = re.search(r'"company"\s*:\s*"([^"]*)"', content)
+    title_match = re.search(r'"title"\s*:\s*"([^"]*)"', content)
 
-    score = int(score_match.group(1)) if score_match else 0
-    score = max(0, min(10, score))
-    reason = reason_match.group(1).strip() if reason_match else content.strip()[:300]
-
-    if not score_match:
+    if score_match:
+        result["score"] = max(0, min(10, int(score_match.group(1))))
+    else:
         # Last resort: find any number
         fst = re.search(r"\b(\d{1,2})\b", content)
-        score = int(fst.group(1)) if fst else 0
-        score = max(0, min(10, score))
+        result["score"] = max(0, min(10, int(fst.group(1)))) if fst else 0
 
-    return score, reason
+    result["reasoning"] = reason_match.group(1).strip() if reason_match else content.strip()[:300]
+    result["company"] = company_match.group(1).strip() if company_match else ""
+    result["title"] = title_match.group(1).strip() if title_match else ""
+
+    return result
 
 
 def _format_profile_summary(profile: dict) -> str:
@@ -145,10 +153,17 @@ Based on the final score and JD requirements, select a strategy:
 ═══════════════════════════════════════════
 Return ONLY valid JSON. No other text.
 {
+  "company": "<real company name from the JD>",
+  "title": "<exact job title from the JD>",
   "reasoning": "...",
   "score": [integer 0-10],
   "strategy": "skills_only" | "full_rewrite"
 }
+
+IMPORTANT: Extract the REAL company name and
+exact job title from the JD text, NOT from the
+metadata fields provided. The metadata may
+contain incorrect website artifacts.
 
 CRITICAL INSTRUCTION: EVERY DEDUCTION IN
 YOUR REASONING MUST REFERENCE A SPECIFIC FACT FROM
@@ -164,7 +179,7 @@ Apply the deduction rubric and return JSON."""
     
     return system, user_msg
 
-def _execute_llm_scoring(system: str, user_msg: str) -> tuple[int, str]:
+def _execute_llm_scoring(system: str, user_msg: str) -> dict:
     """
     Executes the LLM API call with robust error handling and model-specific 
     compatibility logic (e.g., support for JSON mode).
@@ -174,7 +189,7 @@ def _execute_llm_scoring(system: str, user_msg: str) -> tuple[int, str]:
         user_msg (str): User prompt.
         
     Returns:
-        tuple[int, str]: (score, reasoning)
+        dict: {score, reasoning, company, title, strategy}
     """
     client = get_llm_client()
     model_name = get_model_name()
@@ -187,7 +202,7 @@ def _execute_llm_scoring(system: str, user_msg: str) -> tuple[int, str]:
                 {"role": "user", "content": user_msg}
             ],
             temperature=0.0,
-            max_tokens=300,
+            max_tokens=400,
             response_format={"type": "json_object"},
         )
         return parse_llm_json_response(response.choices[0].message.content)
@@ -202,14 +217,14 @@ def _execute_llm_scoring(system: str, user_msg: str) -> tuple[int, str]:
                         {"role": "user", "content": user_msg}
                     ],
                     temperature=0.0,
-                    max_tokens=300,
+                    max_tokens=400,
                 )
                 return parse_llm_json_response(response.choices[0].message.content)
             except Exception as e2:
-                return 0, f"Error calling LLM: {str(e2)}"
-        return 0, f"Error calling LLM: {str(e)}"
+                return {"score": 0, "reasoning": f"Error calling LLM: {str(e2)}", "company": "", "title": "", "strategy": "skills_only"}
+        return {"score": 0, "reasoning": f"Error calling LLM: {str(e)}", "company": "", "title": "", "strategy": "skills_only"}
 
-def _llm_score(job: dict, profile: dict) -> tuple[int, str]:
+def _llm_score(job: dict, profile: dict) -> dict:
     """
     Internal wrapper to orchestrate the prompt building and LLM execution.
     
@@ -218,13 +233,13 @@ def _llm_score(job: dict, profile: dict) -> tuple[int, str]:
         profile (dict): Candidate profile.
         
     Returns:
-        tuple[int, str]: (score, reasoning)
+        dict: {score, reasoning, company, title, strategy}
     """
     system, user_msg = _build_scoring_prompt(job, profile)
     return _execute_llm_scoring(system, user_msg)
 
 
-def score_job(job: dict, profile: dict) -> tuple[int, str]:
+def score_job(job: dict, profile: dict) -> dict:
     """
     Primary API to score a job for a candidate.
     Combines fast local heuristic pre-checks (for known auto-rejects/caps) 
@@ -235,7 +250,7 @@ def score_job(job: dict, profile: dict) -> tuple[int, str]:
         profile (dict): Candidate profile.
         
     Returns:
-        tuple[int, str]: (score 0-10, reason)
+        dict: {score: int, reasoning: str, company: str, title: str, strategy: str}
     """
     # ── Fast pre-check: known quant firms ──
     QUANT_FIRMS = {
@@ -248,7 +263,7 @@ def score_job(job: dict, profile: dict) -> tuple[int, str]:
 
     company_lower = job.get("company", "").lower()
     if any(firm in company_lower for firm in QUANT_FIRMS):
-        return 2, "[PRE-CHECK] Quant firm — auto-capped at 2."
+        return {"score": 2, "reasoning": "[PRE-CHECK] Quant firm — auto-capped at 2.", "company": "", "title": "", "strategy": "skills_only"}
 
     # ── Fast pre-check: seniority in title ──
     title_lower = job.get("title", "").lower()
@@ -256,17 +271,17 @@ def score_job(job: dict, profile: dict) -> tuple[int, str]:
     if any(sig in title_lower for sig in SENIOR_SIGNALS):
         # Exception: "Senior Intern" is fine (some companies use that)
         if "intern" not in title_lower:
-            return 0, "[PRE-CHECK] Senior/Staff/Lead role — auto-rejected."
+            return {"score": 0, "reasoning": "[PRE-CHECK] Senior/Staff/Lead role — auto-rejected.", "company": "", "title": "", "strategy": "skills_only"}
 
     # ── LLM scoring with deduction rubric ──
-    score, reason = _llm_score(job, profile)
+    result = _llm_score(job, profile)
 
     # ── Post-adjustment: sponsorship bonus ──
     if job.get("is_sponsored") and get_settings().get("visa_status") == "prefer_sponsorship":
-        score = min(10, score + 1)
-        reason = "[SPONSORED] " + reason
+        result["score"] = min(10, result["score"] + 1)
+        result["reasoning"] = "[SPONSORED] " + result["reasoning"]
 
-    return score, reason
+    return result
 
 
 # ── Local testing ──
@@ -282,7 +297,9 @@ if __name__ == "__main__":
         "experience_level": "Masters student, looking for Summer Internship",
         "preferences": "AI/ML focus, remote or relocated"
     }
-    s, r = score_job(test_job, test_profile)
-    print(f"Score: {s}/10")
-    print(f"Reason: {r}")
+    result = score_job(test_job, test_profile)
+    print(f"Score: {result['score']}/10")
+    print(f"Reason: {result['reasoning']}")
+    print(f"Company: {result['company']}")
+    print(f"Title: {result['title']}")
 

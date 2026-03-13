@@ -10,12 +10,21 @@ __pycache__/
 
 # Application Data & Auto-Generated Local Storage
 outputs/
+backend/tracked_jobs.db
+backend/tracked_jobs.xlsx
 tracked_jobs.csv
+tracked_jobs.csv.backup
 
 # IDEs & Editor configurations
 .vscode/
 .idea/
 *.swp
+
+# Agent / Workflow configs (per-user)
+.agents/
+.agent/
+_agents/
+_agent/
 
 # Testing & Logs
 .pytest_cache/
@@ -30,4 +39,14 @@ tracked_jobs.csv
 ehthumbs.db
 Thumbs.db
 
-tracked_jobs.csv.backup
+# One-off temp scripts
+rename_broken_folders.py
+test_fix.py
+
+# Personal Data & Credentials
+backend/config/settings.json
+profile/
+references/
+*.sqlite3
+*.pdf
+*.tex

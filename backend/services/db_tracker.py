@@ -164,8 +164,7 @@ def update_job(job_id: str, **kwargs) -> bool:
         
         # Payload Starvation Defensive Guard: Don't store massive JDs for rejected jobs
         eval_status = kwargs.get("status", row_dict.get("status", ""))
-        eval_score = int(kwargs.get("score", row_dict.get("score", 0)))
-        if eval_status in ["rejected", "skipped"] or eval_score < 6:
+        if eval_status in ["rejected", "skipped"]:
             kwargs.pop("description", None)
             kwargs.pop("llm_reasoning", None)
             
@@ -270,12 +269,13 @@ def _get_readable_job_dir(job: dict) -> Path:
     company = safe_filename(job.get("company", "Unknown"))
     title = safe_filename(job.get("title", "Unknown"))
     
-    date_str = ""
-    found = job.get("found_at", "")
-    if found:
-        date_str = found[:10]
-    else:
-        date_str = datetime.now().strftime("%Y-%m-%d")
+    date_str = job.get("date_posted_str", "")
+    if not date_str:
+        found = job.get("found_at", "")
+        if found:
+            date_str = found[:10]
+        else:
+            date_str = datetime.now().strftime("%Y-%m-%d")
         
     job_id = job.get("job_id", "")
     short_id = job_id[:8] if job_id else "NoID"
@@ -285,7 +285,7 @@ def _get_readable_job_dir(job: dict) -> Path:
     if not base.exists() and Path("../outputs/applications").exists():
         base = Path("../outputs/applications")
         
-    return base / f"{company}-{title}-{date_str}-{short_id}"
+    return base / date_str / f"{company}-{title}-{short_id}"
 
 def save_job_details(job: dict) -> str:
     """
@@ -298,9 +298,6 @@ def save_job_details(job: dict) -> str:
     Returns:
         str: Absolute path to the saved JSON file.
     """
-    if job.get('score', 0) < 6 or job.get('status') == 'rejected':
-        return ""
-
     folder = _get_readable_job_dir(job)
     folder.mkdir(parents=True, exist_ok=True)
     
@@ -336,27 +333,25 @@ def load_job_details(job_id: str) -> dict | None:
 
     # 2. Search for readable folders containing the short job_id
     short_id = job_id[:8] if len(job_id) >= 8 else job_id
-    for d in base.iterdir():
-        if d.is_dir() and short_id in d.name:
-            details_path = d / "job_details.json"
-            if details_path.exists():
+    for details_path in base.rglob("job_details.json"):
+        if short_id in details_path.parent.name:
+            try:
                 with open(details_path, encoding="utf-8") as f:
                     data = json.load(f)
                     if data.get("job_id") == job_id:
                         return data
+            except Exception:
+                pass
                         
     # 3. Fallback: Iterate all to be fully safe
-    for d in base.iterdir():
-        if d.is_dir():
-            details = d / "job_details.json"
-            if details.exists():
-                try:
-                    with open(details, encoding="utf-8") as f:
-                        data = json.load(f)
-                        if data.get("job_id") == job_id:
-                            return data
-                except Exception:
-                    pass
+    for details_path in base.rglob("job_details.json"):
+        try:
+            with open(details_path, encoding="utf-8") as f:
+                data = json.load(f)
+                if data.get("job_id") == job_id:
+                    return data
+        except Exception:
+            pass
     return None
     
 # --- Migration logic from CSV ---

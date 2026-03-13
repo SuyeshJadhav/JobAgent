@@ -9,6 +9,15 @@ NON_US_LOCATIONS = [
     "india", "australia", "berlin", "amsterdam", "paris"
 ]
 
+# Generic webpage fragment words that are NOT real company names or job titles.
+# These appear when the browser extension falls back to <title> tag or URL hostname.
+GARBAGE_WORDS = {
+    "careers", "career", "jobs", "job-boards", "job boards",
+    "career opportunities", "hiring", "opportunities",
+    "internship", "apply", "position", "openings",
+    "home", "search", "results", "welcome", "about",
+}
+
 def is_target_location(location_str: str) -> bool:
     """
     Checks if a job location is within the target geographic area (US).
@@ -152,3 +161,33 @@ def safe_filename(name: str) -> str:
     """
     val = re.sub(r'[^a-zA-Z0-9_\-\.]', '_', str(name))
     return re.sub(r'_+', '_', val).strip('_')
+
+def is_garbage_metadata(company: str, title: str) -> bool:
+    """
+    Detects if company/title are obviously wrong webpage artifacts.
+    Returns True when the browser extension sent generic page-title fragments
+    instead of real job metadata (e.g., company='Careers', title='Lenovo').
+    
+    Args:
+        company (str): The company name to validate.
+        title (str): The job title to validate.
+        
+    Returns:
+        bool: True if the metadata looks like garbage.
+    """
+    c = company.lower().strip()
+    t = title.lower().strip()
+    
+    # Company is a generic website section name
+    if c in GARBAGE_WORDS:
+        return True
+    # Title is a generic website section name
+    if t in GARBAGE_WORDS:
+        return True
+    # Title looks like a page tagline, not a job title (real titles are short)
+    if len(t) > 80:
+        return True
+    # Title is just the company name repeated (e.g., company="Copart", title="Copart Careers")
+    if c and t and (c in t or t in c) and "intern" not in t and "engineer" not in t:
+        return True
+    return False

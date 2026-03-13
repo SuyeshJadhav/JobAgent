@@ -163,18 +163,30 @@ def list_outputs():
             folders.append(d.name)
     return {"folders": folders}
 
-def _bg_run_pending():
-    """Background task to tailor all shortlisted jobs."""
+async def _bg_run_pending():
+    """
+    Background task to tailor all shortlisted jobs concurrently.
+    Uses asyncio.gather with a semaphore to limit parallel LLM/LaTeX work.
+    """
+    CONCURRENCY = 2  # Max parallel tailor jobs (LLM + pdflatex per job)
+    semaphore = asyncio.Semaphore(CONCURRENCY)
     jobs = get_jobs(status="shortlisted")
-    for job in jobs:
-        try:
-            print(f"[TAILOR_BATCH] Starting tailoring for {job.get('job_id')}...")
-            run_tailor_endpoint(job["job_id"])
-        except Exception as e:
-            print(f"[TAILOR_BATCH_ERROR] job {job.get('job_id')}: {e}")
+
+    async def _tailor_one(job):
+        async with semaphore:
+            job_id = job.get("job_id", "?")
+            try:
+                print(f"[TAILOR_BATCH] Starting tailoring for {job_id}...")
+                await asyncio.to_thread(run_tailor_endpoint, job_id)
+                print(f"[TAILOR_BATCH] Finished tailoring for {job_id}")
+            except Exception as e:
+                print(f"[TAILOR_BATCH_ERROR] job {job_id}: {e}")
+
+    await asyncio.gather(*[_tailor_one(job) for job in jobs])
+    print(f"[TAILOR_BATCH] All {len(jobs)} jobs processed.")
 
 @router.post("/run_pending")
-def run_pending(background_tasks: BackgroundTasks):
+async def run_pending(background_tasks: BackgroundTasks):
     """Trigger background tailoring for all jobs currently marked 'shortlisted'."""
     jobs = get_jobs(status="shortlisted")
     if not jobs:
@@ -182,6 +194,6 @@ def run_pending(background_tasks: BackgroundTasks):
         
     background_tasks.add_task(_bg_run_pending)
     return {
-        "message": "Triggered background tailoring for shortlisted jobs.",
+        "message": f"Triggered parallel tailoring for {len(jobs)} shortlisted jobs (concurrency={2}).",
         "count": len(jobs)
     }

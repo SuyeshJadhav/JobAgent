@@ -19,6 +19,7 @@ SENIORITY_KEYWORDS = [
     "manager", "director", "head of", "vp"
 ]
 
+
 def _get_settings() -> dict:
     settings_path = Path(__file__).parent.parent / "config" / "settings.json"
     if settings_path.exists():
@@ -29,10 +30,36 @@ def _get_settings() -> dict:
             pass
     return {}
 
+
+SUPPORTED_JOB_TYPES = {"internship", "newgrad", "fulltime"}
+
+
+def normalize_job_types(job_types: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Validates and normalizes a list of job type strings against supported types.
+
+    Args:
+        job_types: List of job type strings (e.g. ["internship", "newgrad"]).
+
+    Returns:
+        A tuple of (recognized_job_types, ignored_job_types).
+    """
+    recognized = []
+    ignored = []
+    for jt in job_types:
+        if jt.lower() in SUPPORTED_JOB_TYPES:
+            recognized.append(jt.lower())
+        else:
+            ignored.append(jt)
+    return recognized, ignored
+
+
 def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
     settings = _get_settings()
-    blocked_companies = [c.lower() for c in settings.get("blocked_companies", [])]
-    blocked_keywords = [k.lower() for k in settings.get("blocked_keywords", [])]
+    blocked_companies = [c.lower()
+                         for c in settings.get("blocked_companies", [])]
+    blocked_keywords = [k.lower()
+                        for k in settings.get("blocked_keywords", [])]
 
     urls_to_fetch = []
     for jt in job_types:
@@ -47,7 +74,8 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
 
     for url in urls_to_fetch:
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            req = urllib.request.Request(
+                url, headers={'User-Agent': 'Mozilla/5.0'})
             with urllib.request.urlopen(req, timeout=15) as response:
                 data = json.loads(response.read().decode())
 
@@ -64,10 +92,11 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
                 # 2b. Skip if job posted before cutoff (hours_old)
                 hours_old = settings.get("hours_old", 72)
                 cutoff = time.time() - (hours_old * 3600)
-                date_posted = item.get("date_posted") or item.get("date_updated", 0)
+                date_posted = item.get(
+                    "date_posted") or item.get("date_updated", 0)
                 if date_posted and date_posted < cutoff:
                     continue
-                
+
                 # 2c. Category/domain filter
                 blocked_cats = settings.get("blocked_categories", [])
                 job_category = item.get("category", "")
@@ -78,7 +107,7 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
                 visa_status = settings.get("visa_status", "no_preference")
                 sponsorship_raw = item.get("sponsorship") or ""
                 is_sponsored = any(
-                    s in sponsorship_raw.lower() 
+                    s in sponsorship_raw.lower()
                     for s in ["yes", "offers", "will sponsor"]
                 )
 
@@ -109,21 +138,30 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
                     is_spam = True
                 if any(bk.lower() in company_lower for bk in blocked_keywords):
                     is_spam = True
-                
+
                 if is_spam:
                     continue
-                
+
                 # Normalize
                 job_id = item.get("id")
                 if not job_id:
                     unique_str = f"{company}{title}"
-                    job_id = hashlib.sha256(unique_str.encode("utf-8")).hexdigest()[:16]
+                    job_id = hashlib.sha256(
+                        unique_str.encode("utf-8")).hexdigest()[:16]
                 else:
                     job_id = str(job_id)
 
                 locations = item.get("locations", [])
                 location = locations[0] if locations else "Remote"
                 description = item.get("description", "")
+                
+                # Extract date_posted for folder organization
+                date_str = ""
+                if date_posted:
+                    try:
+                        date_str = datetime.fromtimestamp(date_posted).strftime("%Y-%m-%d")
+                    except Exception:
+                        pass
 
                 normalized_jobs.append({
                     "job_id": job_id,
@@ -134,6 +172,7 @@ def fetch_simplify_jobs(job_types: list[str]) -> list[dict]:
                     "description": description,
                     "source": "simplify",
                     "found_at": datetime.now().isoformat(),
+                    "date_posted_str": date_str,  # Added for folder organization
                     "status": "pending_scrape",
                     "is_sponsored": is_sponsored
                 })

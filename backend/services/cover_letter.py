@@ -4,6 +4,7 @@ from pathlib import Path
 
 from backend.services.llm_client import get_llm_client, get_model_name
 from backend.services.resume_tailor import safe_filename
+from backend.services.db_tracker import _get_readable_job_dir
 
 ROOT_DIR = Path(__file__).parent.parent.parent
 REFERENCES_DIR = ROOT_DIR / "references"
@@ -121,12 +122,7 @@ def run_cover_letter(job: dict) -> dict:
     Writes output into the same target directory as resume_tailor:
     outputs/applications/{Company}-{Role}-{YYYY-MM-DD}/cover_letter.md
     """
-    company = safe_filename(job.get("company", "Unknown"))
-    role = safe_filename(job.get("title", "Unknown"))
-    date_str = datetime.now().strftime("%Y-%m-%d")
-
-    folder_name = f"{company}-{role}-{date_str}"
-    target_dir = OUTPUT_DIR / folder_name
+    target_dir = _get_readable_job_dir(job)
     target_dir.mkdir(parents=True, exist_ok=True)
 
     refs = load_references()
