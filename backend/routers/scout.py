@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.services.job_sources import fetch_simplify_jobs, normalize_job_types
+from backend.services.job_sources import fetch_simplify_jobs, fetch_google_jobs, deduplicate_jobs, normalize_job_types
 from backend.services.db_tracker import get_jobs, get_job_by_id
 from backend.services.scout_processor import ScoutProcessor
 from backend.utils.url_matcher import find_job_by_url
@@ -39,11 +39,31 @@ def run_scout(background_tasks: BackgroundTasks):
             "message": "No supported job_types configured. Use internship, newgrad, or fulltime."
         }
 
-    # Fetch initial batch
-    raw_jobs = fetch_simplify_jobs(recognized_job_types)
+    # 1. Fetch from SimplifyJobs
+    raw_simplify_jobs = []
+    try:
+        raw_simplify_jobs = fetch_simplify_jobs(recognized_job_types)
+    except Exception as e:
+        print(f"[ERROR] SimplifyJobs fetch failed: {e}")
 
+    # 2. Fetch from Google Search
+    # Assume we use the first recognized job type as the representative string for search (e.g., "internship")
+    raw_google_jobs = []
+    try:
+        search_role = "Software Engineer"
+        if recognized_job_types:
+            search_role += f" {recognized_job_types[0].title()}"
+        # Update location to "United States" to catch more than just Remote roles
+        raw_google_jobs = fetch_google_jobs(role=search_role, location="United States", max_results=50)
+    except Exception as e:
+        print(f"[ERROR] Google Search fetch failed: {e}")
+
+    # 3. Combine and Deduplicate
+    all_raw_jobs = raw_simplify_jobs + raw_google_jobs
+    deduplicated_raw_jobs = deduplicate_jobs(all_raw_jobs)
+    
     new_jobs = []
-    for job in raw_jobs:
+    for job in deduplicated_raw_jobs:
         if not get_job_by_id(job.get("job_id")):
             job.update({"status": "found", "score": 0, "reason": ""})
             from backend.services.db_tracker import add_job
@@ -53,16 +73,15 @@ def run_scout(background_tasks: BackgroundTasks):
     if new_jobs:
         background_tasks.add_task(processor.process_jobs_bg, new_jobs)
 
-    duplicates = len(raw_jobs) - len(new_jobs)
-
     return {
-        "found": len(raw_jobs),
-        "new": len(new_jobs),
-        "duplicates": duplicates,
+        "total_discovered": len(all_raw_jobs),
+        "simplify_count": len(raw_simplify_jobs),
+        "google_count": len(raw_google_jobs),
+        "unique_count": len(deduplicated_raw_jobs),
         "input_job_types": input_job_types,
         "recognized_job_types": recognized_job_types,
         "ignored_job_types": ignored_job_types,
-        "message": f"Triggered knockout pipeline for {len(new_jobs)} jobs ({duplicates} duplicates skipped)."
+        "message": f"Triggered knockout pipeline for {len(new_jobs)} jobs."
     }
 
 

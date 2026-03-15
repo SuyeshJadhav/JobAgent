@@ -25,11 +25,9 @@ class GoogleSheetsManager:
                 self.sheet.append_row(row)
                 return True
             except Exception as e:
-                print(f"Error appending to Google Sheets: {e}")
-                self._fallback_to_excel(row)
+                print(f"[SheetsManager] Failed to append row: {e}")
                 return False
         else:
-            self._fallback_to_excel(row)
             return False
 
     def get_existing_urls(self) -> set:
@@ -41,13 +39,6 @@ class GoogleSheetsManager:
             except Exception as e:
                 print(f"Error fetching existing URLs from Sheets: {e}")
                 return set()
-        # Fallback: read from Excel
-        try:
-            if EXCEL_FALLBACK.exists():
-                df = pd.read_excel(EXCEL_FALLBACK)
-                return set(df["URL"].dropna().tolist())
-        except Exception as e:
-            print(f"Error reading URLs from Excel fallback: {e}")
         return set()
 
     def batch_append_job_rows(self, jobs: list[dict]) -> dict:
@@ -79,25 +70,6 @@ class GoogleSheetsManager:
                 return {"added": len(rows_to_add), "skipped": skipped}
             except Exception as e:
                 print(f"Error batch-appending to Google Sheets: {e}")
-                for row in rows_to_add:
-                    self._fallback_to_excel(row)
                 return {"added": len(rows_to_add), "skipped": skipped}
         else:
-            for row in rows_to_add:
-                self._fallback_to_excel(row)
             return {"added": len(rows_to_add), "skipped": skipped}
-
-    def _fallback_to_excel(self, row):
-        columns = ["Title", "Company", "URL", "Status", "Date Added"]
-        try:
-            EXCEL_FALLBACK.parent.mkdir(parents=True, exist_ok=True)
-            if EXCEL_FALLBACK.exists():
-                df = pd.read_excel(EXCEL_FALLBACK)
-                new_row = pd.DataFrame([row], columns=columns)
-                df = pd.concat([df, new_row], ignore_index=True)
-            else:
-                df = pd.DataFrame([row], columns=columns)
-            
-            df.to_excel(EXCEL_FALLBACK, index=False)
-        except Exception as e:
-            print(f"Error saving to fallback Excel: {e}")

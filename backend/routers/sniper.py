@@ -196,8 +196,7 @@ def complete_sniper_application(payload: CompleteRequest):
         cover_letter_path="",
     )
     
-    from backend.services.excel_formatter import sync_db_to_excel
-    sync_db_to_excel()
+
     
     # ─── The Shredder ────────────────────────────────────────────────
     # We need to find ALL directories that belong to this job.

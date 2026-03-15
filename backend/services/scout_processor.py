@@ -9,7 +9,6 @@ from backend.services.db_tracker import (
     add_job, get_jobs, get_job_by_id,
     save_job_details, update_job
 )
-from backend.services.excel_formatter import sync_db_to_excel
 from backend.services.profile_manager import parse_candidate_profile
 from backend.services.llm_client import get_settings
 from backend.utils.url_matcher import generate_deterministic_job_id
@@ -129,15 +128,6 @@ class ScoutProcessor:
                     update_job(job["job_id"], status="rejected", score=0, reason=f"Internal error: {e}")
 
         await asyncio.gather(*[_process_single(job) for job in new_jobs])
-        self.safe_sync_excel()
-
-    def safe_sync_excel(self):
-        """Wrapper to sync database state to the Excel tracker with error handling."""
-        try:
-            sync_db_to_excel()
-            print("[SYNC] Successfully synced tracked_jobs.db to Excel.")
-        except Exception as e:
-            print(f"[SYNC ERROR] Failed to sync to Excel: {e}")
 
     def track_organic_job(self, url: str, title: str = None, company: str = None, page_text: str = None) -> dict:
         """

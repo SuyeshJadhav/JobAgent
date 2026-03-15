@@ -62,7 +62,6 @@ def application_complete(req: CompleteRequest):
     from datetime import datetime
     from backend.services.db_tracker import get_jobs, update_job
     from backend.utils.url_matcher import find_job_by_url
-    from backend.services.excel_formatter import sync_db_to_excel
     
     jobs = get_jobs()
     matched_job = find_job_by_url(jobs, req.job_url)
@@ -88,10 +87,7 @@ def application_complete(req: CompleteRequest):
         }
         add_job(job_data)
         
-    try:
-        sync_db_to_excel()
-    except Exception as e:
-        print(f"Failed to sync excel: {e}")
+
 
     # 2. Cleanup temp resume
     if req.is_generated and req.generated_resume_path:

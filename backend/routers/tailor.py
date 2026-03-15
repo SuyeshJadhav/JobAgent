@@ -9,9 +9,10 @@ import asyncio
 from backend.services.resume_tailor import run_tailor
 from backend.services.cover_letter import run_cover_letter
 from backend.services.db_tracker import (
-    get_job_by_id, update_job, load_job_details, get_jobs
+    get_job_by_id, update_job, load_job_details, get_jobs, save_job_details
 )
 from backend.services.llm_client import get_settings
+from backend.services.jd_scraper import scrape_full_jd
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "applications"
@@ -47,7 +48,20 @@ def generate_tailored_resume(payload: GenerateRequest):
     details = load_job_details(job_id)
     if not details:
         raise HTTPException(status_code=404, detail="Job details file missing. Re-run scout or organic track.")
-    matched_job["description"] = details.get("description", "")
+        
+    desc = details.get("description", "")
+    if not desc or len(desc) < 100:
+        print(f"[TAILOR JIT] description missing for {job_id}, invoking scrapling...")
+        try:
+            desc = asyncio.run(scrape_full_jd(matched_job.get("apply_link", "")))
+            if desc and desc != "SCRAPE_BLOCKED":
+                 matched_job["description"] = desc
+            else:
+                 raise HTTPException(status_code=400, detail="JD length < 100 and Scrape failed or was blocked.")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch JD missing text: {e}")
+    else:
+        matched_job["description"] = desc
 
     # 3. Check if a PDF already exists (skip re-tailoring)
     existing_dir = None
@@ -111,8 +125,25 @@ def run_tailor_endpoint(job_id: str):
     if not details:
         raise HTTPException(status_code=404, detail="Job details file missing. Re-run scout.")
         
-    # 3. Merge description
-    job["description"] = details.get("description", "")
+    # 3. Merge description and validate
+    desc = details.get("description", "")
+    if not desc or len(desc) < 100:
+        print(f"[TAILOR] description missing for {job_id}, invoking scrapling...")
+        # Invoke scraper
+        try:
+             # run_tailor_endpoint is synchronous in FastAPI but requires await for scrapling
+            desc = asyncio.run(scrape_full_jd(job.get("apply_link", "")))
+            if desc and desc != "SCRAPE_BLOCKED":
+                 job["description"] = desc
+                 details["description"] = desc
+                 save_job_details(job)
+                 update_job(job_id, description=desc[:200] + "...") # Optional tracker update
+            else:
+                 raise HTTPException(status_code=400, detail="JD length < 100 and Scrape failed or was blocked.")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch JD missing text: {e}")
+    else:
+        job["description"] = desc
     
     # 4. Validate score
     settings = get_settings()

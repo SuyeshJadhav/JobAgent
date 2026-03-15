@@ -1,10 +1,8 @@
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
 from backend.services.db_tracker import (
-    get_jobs, get_job_by_id, 
+    get_jobs, get_job_by_id,
     update_job, get_stats, get_db_connection
 )
-from backend.services.excel_formatter import EXCEL_PATH
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/tracker", tags=["tracker"])
@@ -39,14 +37,3 @@ def delete_job(job_id: str):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Job not found")
     return {"deleted": True, "job_id": job_id}
-
-@router.get("/export")
-def export_excel():
-    if not EXCEL_PATH.exists():
-        raise HTTPException(status_code=404, detail="Excel file not found")
-        
-    return FileResponse(
-        path=EXCEL_PATH,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename="tracked_jobs.xlsx"
-    )

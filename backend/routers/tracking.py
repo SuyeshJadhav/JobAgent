@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional
 from backend.services.sheets_manager import GoogleSheetsManager
 from backend.services.job_sources import fetch_simplify_jobs
-from backend.services.excel_formatter import format_excel, sync_db_to_excel
+
 
 router = APIRouter(tags=["Tracking"])
 sheets_manager = GoogleSheetsManager()
@@ -88,12 +88,6 @@ def sync_github_jobs(
         # 3. Batch-add to Sheets (handles dedup internally)
         result = sheets_manager.batch_append_job_rows(sheet_rows)
 
-        # 5. Auto-format the Excel file
-        try:
-            format_excel()
-        except Exception as fmt_err:
-            print(f"[WARN] Excel formatting failed: {fmt_err}")
-
         return {
             "status": "success",
             "message": f"Synced {result['added']} new jobs to Sheets ({result['skipped']} duplicates skipped).",
@@ -104,21 +98,5 @@ def sync_github_jobs(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/format_excel")
-def format_excel_endpoint():
-    """
-    Manual trigger to sync the tracked_jobs.db into the Excel spreadsheet 
-    and apply professional formatting (alternating row colors, auto-fit).
-    
-    Returns:
-        dict: Success message.
-    """
-    try:
-        sync_db_to_excel()
-        return {"status": "success", "message": "Synced tracked_jobs.db to Excel."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
