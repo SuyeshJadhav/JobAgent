@@ -7,11 +7,11 @@ from pathlib import Path
 
 from backend.services.llm_client import get_settings
 from backend.utils.latex_parser import (
-    safe_filename,
     parse_marker_sections,
     inject_content_into_tex,
     cleanup_latex_aux_files
 )
+from backend.utils.text_cleaner import safe_filename
 from backend.services.resume_generators import (
     generate_tailored_content,
     trim_bullets
