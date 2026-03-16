@@ -1,0 +1,43 @@
+{
+  "greenhouse": [
+    "spacex",
+    "mercury",
+    "stripe",
+    "airbnb",
+    "doordash",
+    "robinhood",
+    "reddit",
+    "figma",
+    "dropbox",
+    "twilio",
+    "plaid",
+    "brex",
+    "coinbase",
+    "opendoor",
+    "lithic"
+  ],
+  "lever": [
+    "netflix",
+    "scale-ai",
+    "waymo",
+    "databricks",
+    "canva",
+    "benchling",
+    "handshake",
+    "verkada",
+    "rippling",
+    "pilot"
+  ],
+  "ashby": [
+    "ramp",
+    "cohere",
+    "linear",
+    "notion",
+    "retool",
+    "baseten",
+    "vercel",
+    "anyscale",
+    "modal",
+    "arc"
+  ]
+}

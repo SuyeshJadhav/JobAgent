@@ -1,4 +1,3 @@
-import pandas as pd
 from pathlib import Path
 import gspread
 
@@ -6,13 +5,15 @@ ROOT_DIR = Path(__file__).parent.parent.parent
 CREDENTIALS_FILE = ROOT_DIR / "credentials.json"
 EXCEL_FALLBACK = ROOT_DIR / "backend" / "tracked_jobs.xlsx"
 
+
 class GoogleSheetsManager:
     def __init__(self):
         self.client = None
         self.sheet = None
         if CREDENTIALS_FILE.exists():
             try:
-                self.client = gspread.service_account(filename=str(CREDENTIALS_FILE))
+                self.client = gspread.service_account(
+                    filename=str(CREDENTIALS_FILE))
                 self.sheet = self.client.open("JobAgent Tracker").sheet1
             except Exception as e:
                 print(f"Failed to initialize gspread: {e}")

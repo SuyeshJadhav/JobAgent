@@ -1,8 +1,6 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from pathlib import Path
 from datetime import datetime
-from typing import Optional
 from backend.services.sheets_manager import GoogleSheetsManager
 from backend.services.job_sources import fetch_simplify_jobs
 
@@ -10,19 +8,21 @@ from backend.services.job_sources import fetch_simplify_jobs
 router = APIRouter(tags=["Tracking"])
 sheets_manager = GoogleSheetsManager()
 
+
 class TrackJobPayload(BaseModel):
     title: str
     company: str
     url: str
 
+
 @router.post("/track_job")
 def track_job(payload: TrackJobPayload):
     """
     Manually tracks a job by adding its metadata to Google Sheets/Excel.
-    
+
     Args:
         payload (TrackJobPayload): Job title, company, and URL.
-        
+
     Returns:
         dict: Success status and message.
     """
@@ -50,17 +50,18 @@ def sync_github_jobs(
     """
     Fetches job listings from community GitHub repos (e.g., SimplifyJobs), 
     filters them, and batch-adds them to the tracking system.
-    
+
     Args:
         job_types (str): Comma-separated list of types ('internship', 'newgrad').
-        
+
     Returns:
         dict: Summary of additions and skipped duplicates.
     """
     try:
         types_list = [t.strip() for t in job_types.split(",") if t.strip()]
         if not types_list:
-            raise HTTPException(status_code=400, detail="No valid job types provided.")
+            raise HTTPException(
+                status_code=400, detail="No valid job types provided.")
 
         # 1. Fetch filtered jobs from GitHub
         jobs = fetch_simplify_jobs(types_list)

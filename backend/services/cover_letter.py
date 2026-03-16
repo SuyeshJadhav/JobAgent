@@ -1,9 +1,7 @@
 import tomllib
-from datetime import datetime
 from pathlib import Path
 
 from backend.services.llm_client import get_llm_client, get_model_name
-from backend.services.resume_tailor import safe_filename
 from backend.services.db_tracker import _get_readable_job_dir
 
 ROOT_DIR = Path(__file__).parent.parent.parent
@@ -14,17 +12,20 @@ CANDIDATE_PROFILE = REFERENCES_DIR / "candidate_profile.md"
 COVER_LETTER_TEMPLATE = REFERENCES_DIR / "cover_letter_template.md"
 CONTEXT_BANK = REFERENCES_DIR / "context_bank.toml"
 
+
 def load_references() -> dict:
     """Load candidate_profile, cover_letter_template, and context_bank."""
     refs = {}
 
     if CANDIDATE_PROFILE.exists():
-        refs["candidate_profile"] = CANDIDATE_PROFILE.read_text(encoding="utf-8")
+        refs["candidate_profile"] = CANDIDATE_PROFILE.read_text(
+            encoding="utf-8")
     else:
         refs["candidate_profile"] = ""
 
     if COVER_LETTER_TEMPLATE.exists():
-        refs["cover_letter_template"] = COVER_LETTER_TEMPLATE.read_text(encoding="utf-8")
+        refs["cover_letter_template"] = COVER_LETTER_TEMPLATE.read_text(
+            encoding="utf-8")
     else:
         refs["cover_letter_template"] = ""
 
@@ -105,7 +106,7 @@ def generate_cover_letter_content(
         resp = client.chat.completions.create(
             model=get_model_name(),
             messages=[
-                {"role": "system", "content": system}, 
+                {"role": "system", "content": system},
                 {"role": "user", "content": "Generate the cover letter now."}
             ],
             temperature=0.7
@@ -127,7 +128,7 @@ def run_cover_letter(job: dict) -> dict:
 
     refs = load_references()
     context_summary = _build_context_summary(refs["context_bank"])
-    
+
     desc = job.get("description", "")
     if len(desc) > 8000:
         desc = desc[:8000]
@@ -148,6 +149,7 @@ def run_cover_letter(job: dict) -> dict:
     letter_path.write_text(letter_text, encoding="utf-8")
 
     return {"status": "success", "output_dir": str(target_dir), "cover_letter_path": str(letter_path)}
+
 
 if __name__ == "__main__":
     test_job = {

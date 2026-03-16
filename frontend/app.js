@@ -326,6 +326,7 @@ async function openJobDetail(jobId) {
                 ${job.apply_link ? `<button class="detail-btn" onclick="window.open('${escapeHtml(job.apply_link)}', '_blank')">🔗 Open Posting</button>` : ''}
                 <button class="detail-btn" onclick="updateJobStatus('${job.job_id}', 'shortlisted', this)">✅ Shortlist</button>
                 <button class="detail-btn" onclick="updateJobStatus('${job.job_id}', 'applied', this)">🏁 Mark Applied</button>
+                <button class="detail-btn" onclick="rescoreJob('${job.job_id}', this)">🔄 Re-Score</button>
                 <button class="detail-btn btn-danger" onclick="deleteJobFromModal('${job.job_id}')">🗑 Delete</button>
             </div>
         `;
@@ -384,6 +385,22 @@ async function updateJobStatus(jobId, newStatus, btn) {
     }
 }
 
+async function rescoreJob(jobId, btn) {
+    const orig = btn.textContent;
+    btn.textContent = '⏳';
+    btn.disabled = true;
+    try {
+        const result = await apiFetch(`/api/scout/jobs/${jobId}/rescore`, { method: 'POST' });
+        toast(`Re-scored: ${result.score}/10`, 'success');
+        await refreshAll();
+        openJobDetail(jobId);
+    } catch (e) {
+        toast(`Re-score failed: ${e.message}`, 'error');
+        btn.textContent = orig;
+        btn.disabled = false;
+    }
+}
+
 function closeModal() {
     document.getElementById('modal-overlay').classList.add('hidden');
 }
@@ -418,6 +435,36 @@ async function tailorAll() {
         toast(`Tailor batch failed: ${e.message}`, 'error');
     }
     btn.innerHTML = '<span class="btn-icon">📄</span> Tailor All';
+    btn.disabled = false;
+}
+
+async function syncSheets() {
+    const btn = document.getElementById('btn-sync-sheets');
+    btn.textContent = '⏳ Syncing...';
+    btn.disabled = true;
+    try {
+        const result = await apiFetch('/sync_github_jobs', { method: 'POST' });
+        toast(`Sheets Synced: ${result.added} added, ${result.skipped} skipped`, 'success');
+    } catch (e) {
+        toast(`Sync failed: ${e.message}`, 'error');
+    }
+    btn.innerHTML = '<span class="btn-icon">📁</span> Sync Sheets';
+    btn.disabled = false;
+}
+
+async function clearRejected() {
+    if (!confirm('Permanently delete ALL rejected jobs?')) return;
+    const btn = document.getElementById('btn-clear-rejected');
+    btn.textContent = '⏳ Clearing...';
+    btn.disabled = true;
+    try {
+        const result = await apiFetch('/api/tracker/rejected', { method: 'DELETE' });
+        toast(`Cleared ${result.count} rejected jobs`, 'success');
+        await refreshAll();
+    } catch (e) {
+        toast(`Clear failed: ${e.message}`, 'error');
+    }
+    btn.innerHTML = '<span class="btn-icon">🧹</span> Clear Rejected';
     btn.disabled = false;
 }
 
@@ -474,6 +521,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Nav buttons
     document.getElementById('btn-run-scout').addEventListener('click', runScout);
     document.getElementById('btn-tailor-all').addEventListener('click', tailorAll);
+    document.getElementById('btn-sync-sheets').addEventListener('click', syncSheets);
+    document.getElementById('btn-clear-rejected').addEventListener('click', clearRejected);
     document.getElementById('btn-refresh').addEventListener('click', () => {
         toast('Refreshing...', 'info');
         refreshAll();

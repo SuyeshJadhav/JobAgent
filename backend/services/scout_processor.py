@@ -1,32 +1,33 @@
 import asyncio
-import json
 from pathlib import Path
-from datetime import datetime
 from backend.services.jd_scraper import scrape_full_jd
 from backend.utils.text_cleaner import trim_jd_text, contains_bad_title, contains_dealbreakers, is_auto_shortlist_title, is_target_location, is_garbage_metadata
 from backend.services.scorer import score_job
 from backend.services.db_tracker import (
-    add_job, get_jobs, get_job_by_id,
+    add_job, get_job_by_id,
     save_job_details, update_job
 )
 from backend.services.profile_manager import parse_candidate_profile
 from backend.services.llm_client import get_settings
 from backend.utils.url_matcher import generate_deterministic_job_id
 
+
 class ScoutProcessor:
     """
     The core service orchestrator for the job scouting pipeline.
-    
+
     Responsibilities:
     1. Background processing of newly found jobs (Scraping, Scoring, Tracking).
     2. Handling 'organic' tracking requests from the browser extension.
     3. Managing the candidate profile context.
     4. Synchronizing the internal database (tracked_jobs.db) with the external Excel tracker.
     """
+
     def __init__(self):
         self.settings = get_settings()
         self.threshold = int(self.settings.get("score_threshold", 6))
-        self.profile_path = Path(__file__).parent.parent.parent / "references" / "candidate_profile.md"
+        self.profile_path = Path(
+            __file__).parent.parent.parent / "references" / "candidate_profile.md"
         self._profile = None
 
     @property
@@ -46,7 +47,8 @@ class ScoutProcessor:
         4. LLM Scoring
         5. Database Update & Excel Sync
         """
-        semaphore = asyncio.Semaphore(3) # Limit concurrency to avoid rate limits/bot detection
+        semaphore = asyncio.Semaphore(
+            3)  # Limit concurrency to avoid rate limits/bot detection
 
         async def _process_single(job):
             async with semaphore:
@@ -55,24 +57,30 @@ class ScoutProcessor:
                     bad_title_match = contains_bad_title(job.get('title'))
                     if bad_title_match:
                         reason = f"Rejected: Irrelevant title match ({bad_title_match})"
-                        update_job(job["job_id"], status="rejected", score=1, reason=reason)
-                        print(f"[SKIP] {job.get('title')} - {job.get('company')} (Title Blocklist: {bad_title_match})")
+                        update_job(job["job_id"], status="rejected",
+                                   score=1, reason=reason)
+                        print(
+                            f"[SKIP] {job.get('title')} - {job.get('company')} (Title Blocklist: {bad_title_match})")
                         return
-                        
+
                     # Gate 1.5: Fast-fail on Non-US locations
                     loc_str = job.get('location', '')
                     if not is_target_location(loc_str):
                         reason = f"Rejected: Non-US Location ({loc_str})"
-                        update_job(job["job_id"], status="rejected", score=1, reason=reason)
-                        print(f"[SKIP] {job.get('title')} - {job.get('company')} (Location: {loc_str})")
+                        update_job(job["job_id"], status="rejected",
+                                   score=1, reason=reason)
+                        print(
+                            f"[SKIP] {job.get('title')} - {job.get('company')} (Location: {loc_str})")
                         return
 
                     # Gate 2: Web Scrape
                     jd_text = await scrape_full_jd(job['apply_link'])
                     if not jd_text or jd_text == "SCRAPE_BLOCKED":
                         reason = "Scrape blocked by bot protection" if jd_text == "SCRAPE_BLOCKED" else "Scrape failed to find JD text"
-                        update_job(job["job_id"], status="rejected", score=0, reason=reason)
-                        print(f"[FAIL] {job.get('title')} - {job.get('company')} ({reason})")
+                        update_job(job["job_id"], status="rejected",
+                                   score=0, reason=reason)
+                        print(
+                            f"[FAIL] {job.get('title')} - {job.get('company')} ({reason})")
                         return
 
                     # Gate 3: Sanitization
@@ -81,7 +89,7 @@ class ScoutProcessor:
 
                     # Check for VIP Auto-Shortlist Override (e.g. Intern roles)
                     is_vip = is_auto_shortlist_title(job.get('title'))
-                    
+
                     if is_vip:
                         score = 10
                         reason = "Auto-Shortlisted (Protected Title)"
@@ -90,42 +98,51 @@ class ScoutProcessor:
                         db_match = contains_dealbreakers(jd_text)
                         if db_match:
                             reason = f"Rejected: Found dealbreaker terms in JD ({db_match})"
-                            update_job(job["job_id"], status="rejected", score=1, reason=reason)
-                            print(f"[SKIP] {job.get('title')} - {job.get('company')} (Dealbreaker: {db_match})")
+                            update_job(
+                                job["job_id"], status="rejected", score=1, reason=reason)
+                            print(
+                                f"[SKIP] {job.get('title')} - {job.get('company')} (Dealbreaker: {db_match})")
                             return
 
                         # Gate 5: LLM Scoring
                         result = score_job(job, self.profile)
                         score, reason = result["score"], result["reasoning"]
-                        
+
                         # Fix garbage metadata using LLM-extracted values
                         if is_garbage_metadata(job.get("company", ""), job.get("title", "")):
                             if result.get("company"):
                                 job["company"] = result["company"]
                             if result.get("title"):
                                 job["title"] = result["title"]
-                            update_job(job["job_id"], company=job["company"], title=job["title"])
-                            print(f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
-                    
+                            update_job(
+                                job["job_id"], company=job["company"], title=job["title"])
+                            print(
+                                f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
+
                     job["score"] = score
                     job["reason"] = reason
-                    
+
                     # Final determination
                     if score >= self.threshold:
                         job["status"] = "shortlisted"
-                        update_job(job["job_id"], status="shortlisted", score=score, reason=reason)
-                        print(f"[WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+                        update_job(
+                            job["job_id"], status="shortlisted", score=score, reason=reason)
+                        print(
+                            f"[WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
                     else:
                         job["status"] = "rejected"
-                        update_job(job["job_id"], status="rejected", score=score, reason=reason)
-                        print(f"[REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
-                    
+                        update_job(job["job_id"], status="rejected",
+                                   score=score, reason=reason)
+                        print(
+                            f"[REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+
                     # Always save details to allow manual tailoring overrides
                     save_job_details(job)
 
                 except Exception as e:
                     print(f"[ERROR] processing {job.get('job_id')}: {e}")
-                    update_job(job["job_id"], status="rejected", score=0, reason=f"Internal error: {e}")
+                    update_job(job["job_id"], status="rejected",
+                               score=0, reason=f"Internal error: {e}")
 
         await asyncio.gather(*[_process_single(job) for job in new_jobs])
 
@@ -133,35 +150,38 @@ class ScoutProcessor:
         """
         Processes a single job found 'organically' (via browser extension).
         If the job is already tracked, it performs an 'Upsert' (updating core metadata).
-        
+
         Args:
             url (str): The job posting URL.
             title (str): Job title.
             company (str): Company name.
             page_text (str): Full text scraped from the browser page.
-            
+
         Returns:
             dict: Status summary for the frontend.
         """
         job_id = generate_deterministic_job_id(company, url)
         jd_text = trim_jd_text(page_text) if page_text else ""
-        
+
         existing = get_job_by_id(job_id)
         if existing:
             # Update existing job data with fresh extension info
             updated_job = dict(existing)
-            if title: updated_job['title'] = title
-            if company: updated_job['company'] = company
+            if title:
+                updated_job['title'] = title
+            if company:
+                updated_job['company'] = company
             updated_job['description'] = jd_text
-            
-            update_job(job_id, title=updated_job['title'], company=updated_job['company'])
-            
+
+            update_job(
+                job_id, title=updated_job['title'], company=updated_job['company'])
+
             # Always save updated details to allow manual tailoring overrides
             save_job_details(updated_job)
-                
-            print(f"[UPSERT] Updated existing tracked job: {updated_job['title']} - {updated_job['company']}")
 
-            
+            print(
+                f"[UPSERT] Updated existing tracked job: {updated_job['title']} - {updated_job['company']}")
+
             return {
                 "status": "upserted",
                 "job_id": job_id,
@@ -188,7 +208,7 @@ class ScoutProcessor:
         # Single-pass scoring for the organic find
         result = score_job(job, self.profile)
         score, reason = result["score"], result["reasoning"]
-        
+
         # Fix garbage metadata using LLM-extracted values
         if is_garbage_metadata(job.get("company", ""), job.get("title", "")):
             if result.get("company"):
@@ -197,23 +217,26 @@ class ScoutProcessor:
             if result.get("title"):
                 job["title"] = result["title"]
                 update_job(job_id, title=job["title"])
-            print(f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
-        
+            print(
+                f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
+
         job["score"] = score
         job["reason"] = reason
 
         if score >= self.threshold:
             job["status"] = "shortlisted"
-            update_job(job_id, status="shortlisted", score=score, reason=reason)
-            print(f"[ORGANIC WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+            update_job(job_id, status="shortlisted",
+                       score=score, reason=reason)
+            print(
+                f"[ORGANIC WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
         else:
             job["status"] = "rejected"
             update_job(job_id, status="rejected", score=score, reason=reason)
-            print(f"[ORGANIC REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+            print(
+                f"[ORGANIC REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
 
         # Always save details to allow manual tailoring overrides
         save_job_details(job)
-
 
         return {
             "status": "tracked",

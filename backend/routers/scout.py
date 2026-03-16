@@ -2,7 +2,7 @@ from fastapi import APIRouter, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
 
-from backend.services.job_sources import fetch_simplify_jobs, fetch_google_jobs, deduplicate_jobs, normalize_job_types
+from backend.services.job_sources import deduplicate_jobs, fetch_all_scout_sources, normalize_job_types
 from backend.services.db_tracker import get_jobs, get_job_by_id
 from backend.services.scout_processor import ScoutProcessor
 from backend.utils.url_matcher import find_job_by_url
@@ -39,29 +39,29 @@ def run_scout(background_tasks: BackgroundTasks):
             "message": "No supported job_types configured. Use internship, newgrad, or fulltime."
         }
 
-    # 1. Fetch from SimplifyJobs
-    raw_simplify_jobs = []
+    # 1. Fetch from all 3 sources (Simplify + ATS APIs + Serper fallback)
+    all_raw_jobs = []
+    simplify_count = 0
+    ats_count = 0
+    serper_count = 0
     try:
-        raw_simplify_jobs = fetch_simplify_jobs(recognized_job_types)
+        role_keyword = processor.settings.get(
+            "role_keyword", "Software Engineer Internship")
+        source_results = fetch_all_scout_sources(
+            job_types=recognized_job_types,
+            role_keyword=role_keyword,
+            max_serper_queries=5,
+        )
+        all_raw_jobs = source_results.get("all_jobs", [])
+        simplify_count = source_results.get("simplify_count", 0)
+        ats_count = source_results.get("ats_count", 0)
+        serper_count = source_results.get("serper_count", 0)
     except Exception as e:
-        print(f"[ERROR] SimplifyJobs fetch failed: {e}")
+        print(f"[ERROR] Multi-source fetch failed: {e}")
 
-    # 2. Fetch from Google Search
-    # Assume we use the first recognized job type as the representative string for search (e.g., "internship")
-    raw_google_jobs = []
-    try:
-        search_role = "Software Engineer"
-        if recognized_job_types:
-            search_role += f" {recognized_job_types[0].title()}"
-        # Update location to "United States" to catch more than just Remote roles
-        raw_google_jobs = fetch_google_jobs(role=search_role, location="United States", max_results=50)
-    except Exception as e:
-        print(f"[ERROR] Google Search fetch failed: {e}")
-
-    # 3. Combine and Deduplicate
-    all_raw_jobs = raw_simplify_jobs + raw_google_jobs
+    # 2. Combine and Deduplicate
     deduplicated_raw_jobs = deduplicate_jobs(all_raw_jobs)
-    
+
     new_jobs = []
     for job in deduplicated_raw_jobs:
         if not get_job_by_id(job.get("job_id")):
@@ -75,8 +75,9 @@ def run_scout(background_tasks: BackgroundTasks):
 
     return {
         "total_discovered": len(all_raw_jobs),
-        "simplify_count": len(raw_simplify_jobs),
-        "google_count": len(raw_google_jobs),
+        "simplify_count": simplify_count,
+        "ats_count": ats_count,
+        "serper_count": serper_count,
         "unique_count": len(deduplicated_raw_jobs),
         "input_job_types": input_job_types,
         "recognized_job_types": recognized_job_types,
@@ -129,6 +130,28 @@ def check_url_tracked(url: str):
     if matched:
         return {"tracked": True, "job": matched}
     return {"tracked": False}
+
+
+@router.post("/jobs/{job_id}/rescore")
+def rescore_job_endpoint(job_id: str):
+    """Manually re-scores a job using the LLM based on current profile."""
+    job = get_job_by_id(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    # Load details for full JD
+    from backend.services.db_tracker import load_job_details
+    details = load_job_details(job_id)
+    if details and details.get("description"):
+        job["description"] = details["description"]
+
+    res = processor.track_organic_job(
+        url=job.get("apply_link", ""),
+        title=job.get("title"),
+        company=job.get("company"),
+        page_text=job.get("description", "")
+    )
+    return res
 
 
 @router.post("/organic")

@@ -1,16 +1,15 @@
 import re
 from pathlib import Path
 
-from backend.utils.text_cleaner import safe_filename
 
 def parse_marker_sections(tex_content: str) -> dict:
     """
     Parses LaTeX content for sections demarcated by %% BEGIN Name %% and %% END Name %%.
     This allows surgical injection of tailored content into specific resume sections.
-    
+
     Args:
         tex_content (str): The raw LaTeX template string.
-        
+
     Returns:
         dict: A dictionary of sections, where each key is the section name and 
               the value is a dict with 'start', 'end' (line numbers), and 'content'.
@@ -38,16 +37,17 @@ def parse_marker_sections(tex_content: str) -> dict:
         }
     return sections
 
+
 def inject_content_into_tex(template_str: str, tailored_content: dict, sections: dict) -> str:
     """
     Injects tailored text blocks back into the LaTeX template string.
     Preserves the original section boundaries (%% BEGIN/END markers).
-    
+
     Args:
         template_str (str): The original LaTeX template string.
         tailored_content (dict): Mapping of section names to rewritten text.
         sections (dict): Metadata about section positions (from parse_marker_sections).
-        
+
     Returns:
         str: The updated LaTeX string with tailored content injected.
     """
@@ -62,17 +62,18 @@ def inject_content_into_tex(template_str: str, tailored_content: dict, sections:
         begin_line = sec["start"]
         end_line = sec["end"]
         new_content = tailored_content[section_name]
-        
+
         # Injects the new content between the %% BEGIN and %% END markers
         result_lines[begin_line + 1:end_line] = [new_content]
 
     return "\n".join(result_lines)
 
+
 def cleanup_latex_aux_files(output_dir: Path, filename: str):
     """
     Cleans up the .aux, .log, and .out files left behind by the pdflatex 
     compilation process to keep application folders tidy.
-    
+
     Args:
         output_dir (Path): The directory containing the build artifacts.
         filename (str): The base name of the generated files.

@@ -1,6 +1,5 @@
 import sqlite3
 import json
-import re
 from backend.utils.text_cleaner import safe_filename
 from pathlib import Path
 from datetime import datetime

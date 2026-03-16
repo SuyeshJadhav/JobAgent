@@ -1,9 +1,11 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from pathlib import Path
-
 from backend.routers import scout, tailor, tracker, profile, settings, apply, tracking, sniper
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
+from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=Path(__file__).parent / ".env")
+
 
 app = FastAPI(title="JobAgent Backend API")
 
@@ -27,7 +29,9 @@ app.include_router(sniper.router)
 # Serve the frontend dashboard
 frontend_dir = Path(__file__).parent.parent / "frontend"
 if frontend_dir.exists():
-    app.mount("/dashboard", StaticFiles(directory=str(frontend_dir), html=True), name="dashboard")
+    app.mount("/dashboard", StaticFiles(directory=str(frontend_dir),
+              html=True), name="dashboard")
+
 
 @app.get("/")
 def read_root():

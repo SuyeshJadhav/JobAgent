@@ -152,6 +152,16 @@ body {
     font-size: 1.1rem;
 }
 
+.sync-btn:hover {
+    border-color: var(--accent-cyan) !important;
+    color: var(--accent-cyan) !important;
+}
+
+.purge-btn:hover {
+    border-color: var(--accent-red) !important;
+    color: var(--accent-red) !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    §2  STATS STRIP
    ═══════════════════════════════════════════════════════════════════════════ */
@@ -343,7 +353,7 @@ body {
 /* ── Column Widths ── */
 .col-score { width: 60px; text-align: center; }
 .col-company { width: 160px; }
-.col-title { /* flex fill */ }
+/* .col-title: auto-fills remaining space */
 .col-status { width: 110px; }
 .col-location { width: 140px; }
 .col-source { width: 90px; }

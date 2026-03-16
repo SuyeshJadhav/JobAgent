@@ -1,94 +1,230 @@
-# JobAgent Workflow & Architecture Overview
+# WORKFLOW
 
-## What We Have Done So Far
-The project underwent a major structural migration aimed at turning it from a scattered set of local Python scripts into a robust, centralized FastAPI backend system. Following that, it was optimized to be easily setup removing reliance on external APIs.
+## 1. Architecture overview
 
-1. **Dependency Management**: Created a strict `requirements.txt` to resolve environment errors (like the Playwright missing module crash) and streamline setup.
-2. **Single Data Source of Truth (CSV Native)**: 
-   - Eliminated the redundant SQLite (`scout_jobs.db`) database.
-   - De-coupled the reliance on **Notion API** making it infinitely easier to start offline.
-   - We now rely securely on a native `tracked_jobs.csv` tracking file. This allows standard data modification safely handled by apps like **Excel** or **Google Sheets** for visual manipulation, while maintaining full automated parsing ability behind the API!
-   - Implemented a local JSON caching system (`job_details.json`) for storing full Job Descriptions without hitting tracker cell-size limits.
-3. **Source Engine Migration**: 
-   - Replaced unreliable web-scraping (JobSpy) with high-quality, pre-aggregated GitHub JSON data feeds (Simplify Internships/New Grad lists). 
-   - Implemented sophisticated text-filtering mechanisms for seniority matching, role matching, and company blocking.
-   - Added extensive configurable filtering via `settings.json` (hours posted, category blocking, and strict visa sponsorship checks).
-4. **Backend Router Integration**:
-   - **Scout Router (`scout.py`)**: Connected the Simplify feed to a local LLM which reads the `references/candidate_profile.md` directly. It scores the jobs and pushes viable ones into the `tracked_jobs.csv` as `shortlisted`.
-   - **Tailor Router (`tailor.py`)**: Built an endpoint that pulls the shortlisted job from the spreadsheet, retrieves its local description, modifies the base LaTeX resume, compiles a bespoke PDF via `pdflatex`, generates a custom cover letter, and syncs the file paths back to the tracker file safely.
-   - Implemented strict AI formatting constraint rules (selector prompting) to rewrite resume bullets, number hallucination validations, and automatic PDF one-page length truncation.
-5. **Code Cleanup**: Safely deleted the entire legacy `scripts/` folder, completely unifying the application under the `backend/` FastAPI architecture.
-6. **Google Sheets Integration & GitHub Sync**:
-   - Built `sheets_manager.py` using `gspread` for direct Google Sheets API integration via a service account (`credentials.json`).
-   - Added `batch_append_job_rows()` for efficient bulk inserts with URL-based deduplication (`get_existing_urls()`).
-   - Created `/sync_github_jobs` endpoint (`tracking.py`) to fetch filtered jobs from SimplifyJobs GitHub repos and batch-add them to Google Sheets (or fallback Excel) automatically.
-   - Falls back gracefully to a local `backend/tracked_jobs.xlsx` when Google credentials are unavailable.
-7. **Excel Formatter (`excel_formatter.py`)**:
-   - Professional formatting with status-based color coding (e.g., green for Applied, amber for Shortlisted, red for Rejected).
-   - Clickable "➜ Apply" button column with hyperlinks to the job application URL.
-   - Frozen header row, auto-filters, and custom column widths for a dashboard-like experience.
-   - Auto-formats after every sync; also available on-demand via `POST /format_excel`.
-8. **Sniper Browser Extension**:
-   - Lean `content.js` that injects floating buttons ("🎯 Snipe Answers" and "🏁 Mark Applied") on job application pages.
-   - Scrapes only behavioral/complex textarea questions (filtering out standard identity fields via a blocklist).
-   - Sends questions + URL to the Sniper backend (`/api/sniper/answer`) which matches the job, retrieves the JD, loads the user profile, and uses an LLM to generate tailored answers.
-   - React-safe DOM injection for filling fields and Base64 resume injection via the DataTransfer API.
-   - Manual Job ID fallback UI when the URL can't be auto-matched to a tracked job.
-   - Mark Applied flow (`/api/sniper/complete`) updates the CSV status and cleans up generated PDFs.
-9. **Vector Cache (ChromaDB)**:
-   - Upgraded from simple JSON caching to a semantic vector cache using ChromaDB for profile Q&A.
-   - Performs similarity-based lookups (distance threshold 0.4) to reuse previously generated answers for similar questions.
-10. **Resume Scoring & Auto-Attach**:
-    - The Sniper endpoint evaluates the resume score against the job and automatically attaches the best resume (tailored PDF or default) as Base64 in the response.
+```text
+                       +-----------------------------+
+                       |  company_slugs.json        |
+                       |  backend/config/settings   |
+                       +-------------+--------------+
+                                     |
+                                     v
++-------------+    /api/scout/run   +---------------------------+
+| React Front | -------------------> | FastAPI (backend/main.py)|
+| (TODO: see  |                      | Routers + Services       |
+| note below) | <------------------- | /api/tracker /api/tailor |
++------+------+     JSON responses   +------------+-------------+
+       |                                           |
+       |                                           |
+       |                               write/read  v
+       |                              +------------------------+
+       |                              | db_tracker (SQLite)    |
+       |                              | backend/tracked_jobs.db|
+       |                              +-----------+------------+
+       |                                          |
+       |                                          | save details/resumes
+       |                                          v
+       |                              +------------------------+
+       |                              | outputs/applications   |
+       |                              | job_details.json, PDF  |
+       |                              +------------------------+
+       |
+       | trigger buttons                         +---------------------+
+       +---------------------------------------> | Excel/Sheets Sync   |
+                                                 | sheets_manager.py    |
+                                                 +---------------------+
 
----
+Job source subsystem inside FastAPI:
+  [Simplify feed] + [ATS APIs: Greenhouse/Lever/Ashby] + [Serper query source]
+                               |
+                               v
+                        merged list -> deduplicate -> DB insert
+                               |
+                               v
+                      ScoutProcessor background scoring
 
-## Current Application Workflow
+Resume subsystem inside FastAPI:
+  shortlisted job -> run_tailor() -> section rewrite -> pdflatex -> PDF
 
-The job application pipeline is broken into modular API phases:
+APScheduler component:
+  TODO: No APScheduler implementation is present in backend code right now.
 
-### Phase 1: Scouting (`POST /api/scout/run`)
-- **Action**: Reads the candidate profile and configurations.
-- **Fetch**: Pulls live JSON listings from the Simplify repository.
-- **Filter**: Before any LLM processing, the jobs are strictly pruned using:
-  - Age limits (e.g., posted in the last 72 hours).
-  - Visa sponsorship checks (e.g., blocking non-sponsoring companies).
-  - Category blocking (e.g., removing Hardware, Legal, Finance jobs).
-  - Keyword and seniority checks (removing senior roles or blocked domains).
-- **Score**: The remaining jobs are evaluated by an LLM against a simple rule-list (`candidate_profile.md`) to yield a score out of 10. This ensures the job is relevant (e.g., actually a Software Engineering role) before wasting time making a resume for it.
-- **Track**: Jobs scoring above the configured threshold are appended gracefully into `tracked_jobs.csv` with a status of `shortlisted`. The full bulky Job Description text is saved to the local `outputs/applications/{job_id}/job_details.json`.
+React frontend component:
+  TODO: Current frontend is static HTML + vanilla JavaScript in frontend/index.html and frontend/app.js,
+  not a React app.
+```
 
-### Phase 2: Tailoring (`POST /api/tailor/{job_id}`)
-- **Action**: Targets a specific `job_id` stored in your spreadsheet tracking file.
-- **Verify**: Confirms the job exists, status is `shortlisted`, and score meets the threshold.
-- **Resume Tailoring**: 
-  - Validates which sections to bypass (like Header, Summary, Education).
-  - Uses strict selector LLM prompting to extract exact keywords from the job description and inject them into matched sections (like Projects and Experience), without making up external tools or altering original metrics.
-  - Generates a bespoke PDF via `pdflatex` applying programmatic truncation algorithms to strictly enforce the 1-page aesthetic constraint.
-- **Cover Letter Generation**: Synthesizes a tailored markdown cover letter using context bank notes.
-- **Track**: Updates the job status inside `tracked_jobs.csv` to `tailored` and attaches the local filesystem paths mapping your generated Resume and Cover Letter.
+## 2. How each job source works
 
-### Phase 3: Application via Sniper Extension
-- The Sniper browser extension injects floating UI buttons on any job application page.
-- **"🎯 Snipe Answers"**: Scrapes behavioral questions from the page, sends them to `/api/sniper/answer`, and auto-fills the form fields with LLM-generated, profile-tailored answers. Also injects the best-match resume PDF into file upload inputs.
-- **"🏁 Mark Applied"**: Sends the current URL to `/api/sniper/complete`, which updates the job status to `applied` in `tracked_jobs.csv` and cleans up temporary PDF files.
-- If the URL can't be auto-matched, a manual Job ID input fallback appears.
+### SimplifyJobs GitHub feed
 
-### Phase 4: GitHub Sync & Tracking (`POST /sync_github_jobs`)
-- **Fetch**: Pulls filtered job listings from SimplifyJobs GitHub repositories (internship + new grad).
-- **Dedup**: Checks existing URLs in Google Sheets (or fallback Excel) to skip duplicates.
-- **Batch Insert**: Adds new jobs via `batch_append_job_rows()` using a single `append_rows` API call.
-- **JD Storage**: Saves each job description as a `.txt` file in `backend/saved_jds/` for future reference.
-- **Auto-Format**: Runs the Excel formatter post-sync so the spreadsheet always looks polished.
+Code path: backend/services/job_sources.py, fetch_simplify_jobs().
 
-### Phase 5: Status Tracking & Visualization
-- **Google Sheets**: Primary tracker when `credentials.json` is present — jobs are added to the "JobAgent Tracker" spreadsheet.
-- **Excel Fallback**: `backend/tracked_jobs.xlsx` with professional formatting:
-  - Color-coded rows by status (Saved, GitHub Source, Shortlisted, Applied, Interview, Offer, Rejected).
-  - Clickable "➜ Apply" buttons linking to each job's application URL.
-  - Frozen headers, auto-filters, and styled typography.
-- **On-demand formatting**: `POST /format_excel` re-applies styling to the Excel tracker at any time.
-- Status workflow: `pending_scrape` → `shortlisted` → `tailored` → `applied` → `interviewing` / `rejected` / `offer`.
+- Fetch URL used:
+  - https://raw.githubusercontent.com/SimplifyJobs/Summer2026-Internships/dev/.github/scripts/listings.json
+- Parsed fields per listing:
+  - title
+  - company (company_name fallback company)
+  - url
+  - location (location fallback first entry of locations)
+  - date_posted (date_posted fallback date_updated)
+- Filters applied:
+  - apply link must exist
+  - title must contain configured role keyword (case-insensitive)
+  - location must be US/Remote policy:
+    - accepts location containing usa, united states, u.s., remote
+    - accepts empty/null location
 
----
-*Note: This architecture file will be updated organically as the project evolves with new frontend clients, auto-apply automation features, and interview prep agents.*
+### Direct ATS APIs (Greenhouse, Lever, Ashby)
+
+Code path: backend/services/job_sources.py, fetch_ats_jobs().
+
+- Company slugs source:
+  - company_slugs.json in project root
+  - loaded by \_load_company_slugs() using COMPANY_SLUGS_FILE from backend/config/config.py
+- Calls are parallelized with ThreadPoolExecutor.
+
+Endpoints used:
+
+- Greenhouse:
+  - GET https://boards-api.greenhouse.io/v1/boards/{company_slug}/jobs?content=true
+  - fields used: jobs[].title, jobs[].absolute_url, jobs[].location.name
+- Lever:
+  - GET https://api.lever.co/v0/postings/{company_slug}?mode=json
+  - fields used: [].text, [].hostedUrl, [].categories.location
+- Ashby:
+  - POST https://api.ashbyhq.com/posting-api/job-board/{company_slug}
+  - request body: {"jobPostings": true}
+  - fields used: jobPostings[].title, jobPostings[].jobUrl, jobPostings[].locationName
+
+Filters per ATS result:
+
+- apply URL must exist
+- title contains configured role keyword
+- location passes US/Remote policy (same helper as Simplify source)
+
+### Serper fallback source
+
+Code path: backend/services/job_sources.py, fetch_serper_fallback_jobs().
+
+- Uses \_search_serper() with:
+  - gl="us"
+  - location="United States"
+- Query templates currently generated:
+  - "{role_keyword}" site:myworkdayjobs.com
+  - "{role_keyword}" site:icims.com
+  - "{role_keyword}" site:smartrecruiters.com
+- Quota behavior:
+  - function has max_queries parameter (default 5)
+  - currently only 3 query templates exist, so max actual queries/run is 3
+- Result handling:
+  - blocks aggregator/search URLs
+  - runs ATS/domain heuristics
+  - converts links into normalized job records
+
+TODO: Despite function name "fallback", this source is currently run on every scout call via fetch_all_scout_sources(), not conditionally triggered.
+
+## 3. Data flow from fetch to DB
+
+Current runtime flow from /api/scout/run:
+
+1. FastAPI router receives /api/scout/run.
+2. normalize_job_types() validates configured job_types.
+3. fetch_all_scout_sources() runs:
+   - Simplify feed fetch + filter
+   - ATS API fetch + filter (parallel)
+   - Serper source fetch + heuristic filter
+4. All source jobs are merged into one list.
+5. deduplicate_jobs() runs on merged list.
+6. For each deduped job not already in SQLite (get_job_by_id):
+   - add_job() inserts row with status found, score 0
+7. If any new jobs were inserted, background task process_jobs_bg() starts.
+8. Background processing then scrapes JD, sanitizes text, scores, and updates status/score/reason.
+
+SQLite details:
+
+- DB file: backend/tracked_jobs.db (fallback tracked_jobs.db outside repo root)
+- Access layer: backend/services/db_tracker.py
+- Table: jobs with lifecycle fields and artifact paths
+- CSV migration is still present as one-time compatibility logic if tracked_jobs.csv exists.
+
+WAL mode:
+
+- TODO: WAL mode is not configured in current db_tracker.py (no PRAGMA journal_mode=WAL found).
+
+## 4. Scoring system
+
+What exists in code today (backend/services/scorer.py + scout_processor.py):
+
+### Stage A: deterministic pre-checks
+
+- Quant firm cap pre-check in score_job(): known quant company names are auto-capped to score 2.
+- Seniority pre-check in score_job(): senior/staff/lead/manager/director titles auto-rejected to score 0 (except intern wording).
+- Additional deterministic gates in ScoutProcessor before scoring:
+  - blocked title terms
+  - non-target location checks
+  - dealbreaker term checks from JD text
+  - protected intern-like titles can auto-shortlist with score 10
+
+### Stage B: LLM deduction rubric scoring
+
+- \_build_scoring_prompt() defines a base-10 deduction rubric with:
+  - auto-reject conditions
+  - experience gap penalties
+  - core stack mismatch penalties
+  - domain penalties
+  - role relevance bonus
+- model call path:
+  - \_execute_llm_scoring() with JSON response mode when supported
+  - parse_llm_json_response() with regex fallback
+
+### Stage C: post-adjustment
+
+- sponsorship bonus (+1) when is_sponsored is true and visa preference is prefer_sponsorship.
+
+Domain caps and inflation control:
+
+- Quant firms are explicitly capped via deterministic pre-check to reduce finance-domain score inflation.
+- The LLM rubric also includes domain penalties for quant/legal/non-tech/finance contexts.
+
+Requested "3-stage hybrid deterministic -> keyword match -> borderline LLM" mapping:
+
+- TODO: There is no separate explicit keyword-match scoring stage before LLM.
+- TODO: There is no explicit "only borderline goes to LLM" branch; LLM scoring is used by default after pre-checks.
+
+## 5. Resume tailoring pipeline
+
+Code path: backend/routers/tailor.py + backend/services/resume_tailor.py + backend/services/resume_generators.py + backend/utils/latex_parser.py.
+
+### Lazy/on-demand trigger
+
+- Primary JIT endpoint: /api/tailor/generate.
+- It resolves by job_id or URL, ensures JD exists (or scrapes it), then runs tailoring only when requested.
+- If an existing PDF already exists for the job, the endpoint reuses it instead of regenerating.
+
+### Section-aware formatting
+
+- parse_marker_sections() reads %% BEGIN ... %% / %% END ... %% marker blocks.
+- generate_tailored_content() applies section-specific behavior:
+  - skip pass-through sections (header/summary/education)
+  - special skills-mode rewrite for SKILLS
+  - bullet-mode rewrite for EXPERIENCE/PROJECTS
+- inject_content_into_tex() injects rewritten text only inside marker regions.
+
+### imp macro handling
+
+- In rewrite_bullets() prompt rules, model is told: NEVER use the old \imp macro; use \textbf instead.
+- TODO: There is no "\imp preservation" mechanism in current code. The behavior is the opposite (discourage \imp usage).
+
+### Number hallucination validation with retry
+
+- rewrite_bullets_with_validation() extracts numbers from trusted context + original text.
+- If rewritten output introduces unseen numbers, it retries once with stricter warning.
+- On repeated failure, it falls back to original section text.
+
+### Technical keyword filtering / domain-bleed controls
+
+- rewrite_bullets() strict prompt forbids inventing tools, projects, or metrics.
+- It explicitly instructs ignoring keywords that require adding unsupported technologies.
+- rewrite_skills_section() constrains output to skills listed in profile/skills.md and prunes to 4-5 relevant categories.
+- This combination is the current domain-bleed prevention mechanism.

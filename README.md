@@ -1,73 +1,124 @@
-<div align="center">
-  <img src="https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/bot.svg" width="80" height="80" />
-  <h1>JobAgent</h1>
-  <p><strong>The Neo-Brutalist AI Command Center for Job Searching</strong></p>
-  <p><i>Automated Tracking • LLM Resume Tailoring • Form Sniping • Privacy-First Ephemeral Storage</i></p>
-</div>
+# JobAgent
 
----
+## 1. What is JobAgent
 
-## 🚀 Overview
+JobAgent helps you find internship jobs, score them, and keep them organized in one place. It can also generate a tailored resume PDF and cover letter for a specific job when you ask for it. Everything runs locally with your FastAPI backend plus a browser extension workflow.
 
-JobAgent is a high-performance, developer-first tool designed to automate the most tedious parts of the job application process. Unlike generic tools, JobAgent focuses on **high-quality tailoring** and **local privacy**, keeping your resume data and application history on your own machine.
+## 2. Features
 
-### Core Modules
-- **Scout**: Automatically captures job details from URLs and scores them against your profile.
-- **Tailor**: Forges a custom LaTeX resume for every job, with a 2-pass "Shrink-to-Fit" logic.
-- **Sniper**: Injects AI-powered answers directly into application forms (textareas/behavioral questions).
-- **The Shredder**: Automatically cleans up temporary application artifacts after you apply to keep your system clean.
+- Finds jobs from multiple sources (Simplify feed, ATS APIs, and Serper queries)
+- Filters jobs for US/Remote and role keyword match
+- Tracks jobs in local SQLite
+- Scores jobs with a rule-based + LLM pipeline
+- Generates tailored LaTeX resume PDFs on demand
+- Generates cover letters on demand
+- Supports browser autofill/sniper flow for application answers
+- Optional Google Sheets sync helper for job rows
+- Dashboard UI to run scout, tailor, and track status
 
-## 🏗️ Architecture
+## 3. Installation
 
-```mermaid
-graph TD
-    A[Chrome Extension] -- REST API --> B[FastAPI Backend]
-    B -- LLM Context --> C[LLM Provider]
-    B -- Persistent State --> D[(SQLite DB)]
-    B -- Temp Artifacts --> E[Local Filesystem /outputs]
-    A -- DOM Injection --> F[ATS Form]
+### Prerequisites
+
+- Python 3.10+
+- Node.js
+  - TODO: The current frontend is static HTML/JS and does not require npm build steps in this repo.
+
+### Step-by-step setup
+
+1. Clone repo and open folder.
+
+```bash
+git clone <your-repo-url>
+cd JobAgent
 ```
 
-## 🛠️ Setup Guide
+2. Create and activate a Python virtual environment.
 
-### 1. Backend (Python)
-- **Requirements**: Python 3.10+, TeX Live (for LaTeX compilation).
-- **Installation**:
-  ```bash
-  pip install -r requirements.txt
-  ```
-- **Execution**:
-  ```bash
-  python -m uvicorn backend.main:app --reload
-  ```
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
 
-### 2. Extension (Chrome)
-- Open `chrome://extensions/`.
-- Enable **Developer Mode**.
-- Click **Load Unpacked** and select the `extension/` directory.
+3. Install Python dependencies.
 
-### 3. Profile Setup
-Populate the `profile/` directory with your details:
-- `personal_info.md`, `work_experience.md`, `skills.md`, etc.
-- `resume.pdf` (Base resume for fallback).
+```bash
+pip install -r requirements.txt
+```
 
-## 🎮 Usage
+4. Create backend/.env file.
 
-### The Floating Action Menu (FAM)
-Once installed, a green **AGENT** tab will appear on compatible job boards. Use it to:
-1. **📥 Track & Score**: Grab the JD and get an LLM-powered match score.
-2. **📄 Tailor Resume**: Generate a 1-page LaTeX PDF specifically for that JD.
-3. **💉 Inject & Apply**: Download/Inject the tailored PDF into the ATS.
-4. **🏁 Mark Applied**: Trigger "The Shredder" to clean up temp files and update your history.
+Exact template:
 
-### ✨ Sniper Answers
-Look for the **Suggest Answer** button next to textareas on application forms. JobAgent will generate a tailored response based on your essay bank and the JD.
+```env
+SERPER_API_KEY=your_serper_api_key_here
+```
 
-## 📑 Documentation
-- [System Design & Philosophies](docs/DESIGN.md)
-- [Project Workflow](workflow.md)
+5. Start backend.
 
----
-<div align="center">
-  Built with ❤️ for the ambitious job seeker.
-</div>
+```bash
+python -m uvicorn backend.main:app --reload
+```
+
+6. Open dashboard.
+
+- http://localhost:8000/dashboard
+
+## 4. Configuration
+
+### backend/config/config.py keys
+
+Current keys in this file are:
+
+- SERPER_API_KEY
+  - Read from environment variable SERPER_API_KEY
+  - Used for Serper search calls
+- COMPANY_SLUGS_FILE
+  - Name of the slug file used by ATS API source loader
+  - Default value is company_slugs.json in project root
+
+### company_slugs.json
+
+This file tells JobAgent which companies to query in each ATS type:
+
+- greenhouse list
+- lever list
+- ashby list
+
+To add a company:
+
+1. Pick the right ATS list.
+2. Add the company slug string to that list.
+3. Save file and run scout again.
+
+Reference for internship listings and employer context:
+
+- https://github.com/SimplifyJobs/Summer2026-Internships
+
+TODO: Slugs themselves come from each company ATS board URL pattern, not directly from the Simplify repo code.
+
+## 5. Troubleshooting
+
+### I see 0 jobs
+
+- Check SERPER_API_KEY in backend/.env
+- Check company_slugs.json has real entries in greenhouse, lever, and ashby
+- Check backend/config/settings.json role keyword and job_types settings
+
+### Resume tailor is not working
+
+- Check your LLM configuration
+- TODO: Current code reads LLM provider/model/key from backend/config/settings.json (for Groq) and not from .env directly.
+
+### App will not start
+
+- Confirm Python version is 3.10+
+- Confirm Node.js is installed
+- Reinstall dependencies: pip install -r requirements.txt
+- Start with: python -m uvicorn backend.main:app --reload
+
+### Jobs are not from USA
+
+- Source filters in job_sources.py enforce US/Remote checks per source
+- Serper request currently sends gl="us" and location="United States"
+- TODO: These Serper parameters are hardcoded in backend/services/job_sources.py, not in backend/config/config.py
