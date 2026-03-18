@@ -116,6 +116,7 @@ python-multipart==0.0.22
 pytz==2025.2
 pywin32==311; sys_platform == "win32"
 PyYAML==6.0.3
+pytest==8.4.2
 rebrowser_playwright==1.52.0
 redis==7.2.1
 referencing==0.37.0

@@ -1,330 +1,326 @@
-# Context Bank
-# ─────────────────────────────────────────────────────────────
-# This is YOUR raw notes file. Fill it in casually — like you're
-# texting a friend about what you built. The agent reads this and
-# turns it into polished, specific, human-sounding resume bullets.
-#
-# GOLDEN RULE: The agent never invents. It only translates YOUR words.
-# Rough numbers are fine. "around 40%" is better than nothing.
-# ─────────────────────────────────────────────────────────────
-
-
-# ══════════════════════════════════════════════════════════════
-# EXPERIENCE ENTRIES
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════
+# EXPERIENCE
+# ══════════════════════════════════════════════
 
 [[experience]]
 company = "KJSCE Software Development Cell"
 role    = "Software Development Engineer Intern"
 dates   = "March 2024 – August 2024"
 
-  [[experience.project_1]]
-  what_did_you_build    = "A full-stack course management platform"
-  tools_used            = "MERN stack (MongoDB, Express, React, Node.js), REST APIs"
-  what_problem_it_solved = "Needed a platform for course management at the college"
-  scale                 = "1,000+ users"
-  your_specific_role    = "Owned end-to-end — system design, REST API design, database schema, and MERN implementation"
-  what_was_hard         = "Owning the whole system design from scratch — REST APIs, DB schema, everything"
+  [[experience.achievement]]
+  verb    = "Architected"
+  what    = "full-stack course management platform"
+  tool    = "MERN stack"
+  metric  = "1,000+ users"
+  outcome = "end-to-end system ownership from design to deployment"
+  narrative = "Architected and shipped a full-stack course management platform for 1,000+ users, owning system design, REST API design, database schema, and MERN implementation end-to-end."
 
-  [[experience.project_2]]
-  what_did_you_build    = "Optimized MongoDB aggregation pipelines and query patterns"
-  tools_used            = "MongoDB"
-  what_problem_it_solved = "API latency was too high across core data workflows"
-  after_your_work       = "~40% reduction in API latency"
-  your_specific_role    = "Identified slow queries and rewrote aggregation pipelines"
+  [[experience.achievement]]
+  verb    = "Optimized"
+  what    = "MongoDB aggregation pipelines and query patterns"
+  tool    = "MongoDB"
+  metric  = "40% reduction in API latency"
+  outcome = "faster core data workflows"
+  narrative = "Optimized MongoDB aggregation pipelines and query patterns, achieving ~40% reduction in API latency across core data workflows."
 
-  [[experience.project_3]]
-  what_did_you_build    = "Established reusable component standards and code review process"
-  tools_used            = "React"
-  what_problem_it_solved = "Frontend inconsistencies across the codebase"
-  your_specific_role    = "Set component standards and conducted code reviews"
-  after_your_work       = "Reduced frontend inconsistencies, improved long-term maintainability"
-
+  [[experience.achievement]]
+  verb    = "Established"
+  what    = "reusable component standards and code review process"
+  tool    = "React"
+  metric  = ""
+  outcome = "reduced frontend inconsistencies across codebase"
+  narrative = "Established reusable component standards and conducted code reviews, reducing frontend inconsistencies and improving long-term maintainability."
 
 [[experience]]
 company = "Caarya Innovation Solutions"
 role    = "Full Stack Development Intern"
 dates   = "December 2023 – February 2024"
 
-  [[experience.project_1]]
-  what_did_you_build    = "A customer-facing web platform — dashboard, e-commerce flows, and internal tooling"
-  tools_used            = "MERN stack (MongoDB, Express, React, Node.js), REST APIs"
-  what_problem_it_solved = "Company needed a customer-facing platform from zero"
-  scale                 = "2-person team, zero prior documentation or design assets"
-  your_specific_role    = "Built and shipped as part of a 2-person team with no docs or designs to start from"
-  what_was_hard         = "Frequent mid-project requirement changes — had to decouple frontend and backend to stay stable"
+  [[experience.achievement]]
+  verb    = "Built"
+  what    = "customer-facing web platform with dashboard, e-commerce flows, and internal tooling"
+  tool    = "MERN stack"
+  metric  = "2-person team"
+  outcome = "zero-to-production with no prior docs or design assets"
+  narrative = "Built and shipped a customer-facing web platform — dashboard, e-commerce flows, and internal tooling — as part of a 2-person team with zero prior documentation or design assets."
 
-  [[experience.project_2]]
-  what_did_you_build    = "Rapid iteration on high-fidelity features under tight deadlines"
-  what_problem_it_solved = "Client engagement was low"
-  after_your_work       = "~25% improvement in client engagement"
-  your_specific_role    = "Translated ambiguous client feedback into stable, production-ready implementations"
-  what_was_hard         = "Delivering under tight deadlines without compromising code quality"
+  [[experience.achievement]]
+  verb    = "Delivered"
+  what    = "rapid iteration on high-fidelity features under tight deadlines"
+  tool    = "React"
+  metric  = "25% improvement in client engagement"
+  outcome = "stable production-ready implementations from ambiguous feedback"
+  narrative = "Drove ~25% improvement in client engagement through rapid iteration on high-fidelity features, delivering under tight deadlines without compromising code quality."
 
-
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════
 # PROJECTS
-# ══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════
 
 [[project]]
-name  = "TweetScape"
-tools_used = "React 19, FastAPI, D3.js, Transformers, SQLite"
+name       = "TweetScape"
+stack      = ["React 19", "FastAPI", "D3.js", "Transformers", "SQLite", "UMAP", "SentenceTransformers", "RoBERTa", "DistilRoBERTa", "KeyBERT", "TF-IDF", "Playwright", "Ollama", "Gemma"]
 github_link = "https://github.com/SuyeshJadhav/tweetscape"
+dates      = "December 2025 – January 2026"
+summary    = "Full-stack social media analytics platform processing tweets through a 10-stage NLP pipeline with interactive D3.js visualization."
 
-what_does_it_do = """
-  A full-stack social media analytics platform that processes tweets through a massive 10-stage NLP processing pipeline, rendering the data onto an interactive physics-based React frontend.
-"""
+  [[project.achievement]]
+  verb    = "Built"
+  what    = "10-stage NLP pipeline for end-to-end tweet processing"
+  tool    = "FastAPI"
+  metric  = "75ms per tweet"
+  outcome = "ingestion through sentiment, clustering, and caching in one flow"
+  narrative = "Built a 10-stage NLP pipeline using FastAPI, processing tweets end-to-end at 75ms per tweet across 5 distinct model stages."
 
-  [[project.bullet_1]]
-  what_did_you_build    = "A 10-stage NLP pipeline for end-to-end data processing"
-  tools_used            = "FastAPI"
-  how_it_works          = "Pipeline architecture configured to ingest, deduplicate, embed, reduce, run sentiment and emotion extraction, cluster, parse keywords, persist, and cache"
-  metric                = "Processing tweets end-to-end at 75ms per tweet across 5 distinct model stages"
+  [[project.achievement]]
+  verb    = "Orchestrated"
+  what    = "5-model NLP inference stack"
+  tool    = "SentenceTransformers + RoBERTa + KeyBERT + TF-IDF"
+  metric  = "484 texts/sec"
+  outcome = "parallel sentiment, emotion, embedding, and keyword extraction"
+  narrative = "Orchestrated 5-model NLP inference stack achieving 484 texts/sec throughput using SentenceTransformers, RoBERTa sentiment, DistilRoBERTa emotion, KeyBERT, and TF-IDF."
 
-  [[project.bullet_2]]
-  what_did_you_build    = "A 5-model NLP inference stack"
-  tools_used            = "SentenceTransformers, RoBERTa sentiment, DistilRoBERTa emotion, KeyBERT, TF-IDF"
-  how_it_works          = "Orchestrated these models and reduced output to 2D formats for visual rendering via UMAP"
-  metric                = "SentenceTransformers pushed 484 texts/sec"
+  [[project.achievement]]
+  verb    = "Designed"
+  what    = "interactive force-directed cluster visualization"
+  tool    = "React 19 + D3.js + UMAP"
+  metric  = "384D to 2D"
+  outcome = "real-time sentiment polarity mapped to physics-based visual nodes"
+  narrative = "Designed interactive force-directed visualization reducing 384D embeddings to 2D via UMAP, mapping sentiment polarities to physics-based nodes with collision physics and hover tooltips."
 
-  [[project.bullet_3]]
-  what_did_you_build    = "An interactive force-directed visualization simulation"
-  tools_used            = "React 19, D3.js, UMAP"
-  how_it_works          = "Reduced vector embeddings to 2D and mapped sentiment polarities to specific visual nodes with collision physics and hover tooltips"
-  interesting_decision  = "Added glow effects specifically for high-polarity nodes (|score| > 0.7) to immediately capture user attention"
-
-  [[project.bullet_4]]
-  what_did_you_build    = "A smart caching layer and LLM query expansion implementation"
-  tools_used            = "SQLite, Ollama Gemma"
-  how_it_works          = "Cached SQLite query-results to short-circuit redundant scraping and model inference on repeated, overlapping topics"
-  metric                = "Configured cache with a 24-hour TTL for optimal throughput"
-
+  [[project.achievement]]
+  verb    = "Implemented"
+  what    = "smart caching layer with LLM query expansion"
+  tool    = "SQLite + Ollama Gemma"
+  metric  = "24-hour TTL"
+  outcome = "eliminated redundant scraping and model inference on repeated topics"
+  narrative = "Implemented smart caching layer with 24-hour TTL using SQLite and Ollama Gemma, short-circuiting redundant scraping and model inference on overlapping topics."
 
 [[project]]
-name  = "Personal AI Agent"
-tools_used = "Python, FastAPI, SQLite, ChromaDB, Ollama, React Native"
+name       = "Personal AI Agent"
+stack      = ["Python", "FastAPI", "SQLite", "ChromaDB", "Ollama", "React Native", "Llama 3.2"]
 github_link = "https://github.com/SuyeshJadhav/AI_Assistant"
+dates      = "October 2025 – February 2026"
+summary    = "Personalized ReAct reasoning AI system with voice I/O, dynamic tool generation, persistent memory, and local inference."
 
-what_does_it_do = """
-  A highly personalized ReAct reasoning AI system configured with voice I/O, strict dynamic tool generation, extensive database mapping, and rapid local inference metrics.
-"""
+  [[project.achievement]]
+  verb    = "Built"
+  what    = "production-grade local LLM system"
+  tool    = "Ollama + Llama 3.2"
+  metric  = "90 tokens/sec"
+  outcome = "real-time inference on RTX 3050 via prompt tuning and batching"
+  narrative = "Built production-grade local LLM system using Ollama + Llama 3.2, achieving 90 tokens/sec via prompt tuning, batching, and GPU offloading on RTX 3050."
 
-  [[project.bullet_1]]
-  what_did_you_build    = "A fully independent ReAct reasoning system from scratch"
-  tools_used            = "Python, FastAPI, React Native"
-  how_it_works          = "Evolved from a simple grocery reminder into a persistent memory manager configured with voice IO, calendar hooks, and a mobile UI"
+  [[project.achievement]]
+  verb    = "Engineered"
+  what    = "custom agent runtime with decorator-based tool registry"
+  tool    = "Python"
+  metric  = "14 tools"
+  outcome = "eliminated infinite reasoning cycles via loop-detection guards"
+  narrative = "Engineered custom agent runtime with deterministic tool execution, decorator-based registry supporting 14 tools, and loop-detection guards eliminating infinite reasoning cycles."
 
-  [[project.bullet_2]]
-  what_did_you_build    = "A 6-tool deterministic ReAct agent runtime"
-  tools_used            = "Python"
-  how_it_works          = "Developed decorator-based auto-registration workflows that surgically abstract docstrings and type hints out at the logic level"
-  metric                = "Enforced parameter coercion and rigid loop-detection guards across 9 specific intent categories to forcefully eliminate infinite looping recursion"
+  [[project.achievement]]
+  verb    = "Designed"
+  what    = "hybrid memory architecture"
+  tool    = "SQLite + ChromaDB"
+  metric  = "sub-10ms retrieval"
+  outcome = "structured state in SQLite, semantic recall in ChromaDB"
+  narrative = "Designed hybrid memory architecture combining SQLite WAL mode for structured state and ChromaDB 384D semantic embeddings, enabling sub-10ms retrieval with controlled prompt growth."
 
-  [[project.bullet_3]]
-  what_did_you_build    = "A dual-storage memory and caching system"
-  tools_used            = "SQLite, ChromaDB"
-  how_it_works          = "Split structured constraints onto SQLite and mapped deep context directly onto ChromaDB 384-dimensional semantic embeddings"
-  metric                = "Achieved 2.61ms avg SQLite conversation retrieval (1,000+ rows) and 190ms semantic search times"
-  
-  [[project.bullet_4]]
-  what_did_you_build    = "Data-layer optimizations directly combating scaling lag"
-  tools_used            = "SQLite"
-  how_it_works          = "Profiled the storage logic entirely, embedding robust WAL journaling alongside mapped indexes targeting entities, states, sessions, and timestamps"
-  metric                = "Dropped API transaction latency directly to sub-3ms P95 overhead via 15+ strategic indexes"
-
-  [[project.bullet_5]]
-  what_did_you_build    = "Hardware-aware backend logic"
-  tools_used            = "Ollama, Groq, OpenAI, Whisper"
-  how_it_works          = "Aggregated 4 backend providers while quantizing Whisper audio IO down (int8/int8_float16)"
-  metric                = "Pushed 90 tokens/sec local inference running natively on a low profile RTX 3050"
-  
-  [[project.bullet_6]]
-  what_did_you_build    = "An adaptive personality inference engine"
-  tools_used            = "LLM profiling"
-  how_it_works          = "Modeled communication styles (formal/casual), verbosity choices, and logical persistence directly into a dedicated feedback table"
-  metric                = "Maintained low-latency via a tight 5-minute TTL profile cache"
-
+  [[project.achievement]]
+  verb    = "Optimized"
+  what    = "data-layer storage with WAL journaling and indexed queries"
+  tool    = "SQLite"
+  metric  = "2.61ms avg retrieval across 1,000+ rows"
+  outcome = "eliminated scaling lag via profiling and index targeting"
+  narrative = "Optimized data-layer storage achieving 2.61ms avg SQLite retrieval across 1,000+ rows via WAL journaling and indexes targeting entities, states, sessions, and timestamps."
 
 [[project]]
-name  = "WolfCafe+"
-tools_used = "React, Node.js, MongoDB, Socket.IO, GitHub Actions"
+name       = "WolfCafe+"
+stack      = ["Node.js", "Express", "MongoDB", "Socket.IO", "JWT", "Jest", "GitHub Actions", "Codecov"]
 github_link = "https://github.com/SuyeshJadhav/WrikiCafePlus"
+dates      = ""
+summary    = "Full-stack café ordering platform with real-time group ordering, ML recommendations, and automated CI/CD pipeline."
 
-what_does_it_do = """
-  A scalable, full-stack campus dining and group ordering platform heavily secured and evaluated using custom MongoDB aggregation pipelines and ML-driven product recommendations.
-"""
+  [[project.achievement]]
+  verb    = "Architected"
+  what    = "REST API backend with 45+ endpoints across 10 router modules"
+  tool    = "Node.js + Express + JWT"
+  metric  = "45+ endpoints"
+  outcome = "role-based access control for admin and transactional flows"
+  narrative = "Architected REST API backend with 45+ endpoints across 10 router modules using Node.js, Express, and JWT for role-based access control."
 
-  [[project.bullet_1]]
-  what_did_you_build    = "The entire backend suite and admin analytical capabilities"
-  tools_used            = "Node.js, Express, JWT"
-  how_it_works          = "Programmed 10 distinct router modules and 11 controllers for managing all admin and transactional data via role-based access control and JWT"
-  metric                = "Maintained 45+ robust REST endpoints operating in a 3-person team structure"
-  
-  [[project.bullet_2]]
-  what_did_you_build    = "An ML hybrid recommendation engine"
-  tools_used            = "MongoDB, Node.js"
-  how_it_works          = "Architected filtering mapping collaborative, content similarity, temporal scoring, and popularity signals utilizing weights alongside per-category diversity capping"
-  metric                = "Safely incorporated a 20% randomized exploration injection pattern"
+  [[project.achievement]]
+  verb    = "Built"
+  what    = "ML hybrid recommendation engine"
+  tool    = "MongoDB + Node.js"
+  metric  = "20% exploration injection"
+  outcome = "collaborative, content similarity, temporal, and popularity signals with diversity capping"
+  narrative = "Built ML hybrid recommendation engine combining collaborative filtering, content similarity, temporal scoring, and popularity signals with 20% randomized exploration injection."
 
-  [[project.bullet_3]]
-  what_did_you_build    = "A real-time hybrid group ordering system"
-  tools_used            = "Socket.IO, Express"
-  how_it_works          = "Returned HTTP response immediately, deferring room broadcast triggers, async socket dispatches, and email notifications to the background"
-  metric                = "Supported 6-char share codes with isolated 2-hour session expiry logic"
+  [[project.achievement]]
+  verb    = "Implemented"
+  what    = "real-time group ordering system"
+  tool    = "Socket.IO + Express"
+  metric  = "2-hour session expiry"
+  outcome = "async socket dispatch and email notifications deferred from HTTP response"
+  narrative = "Implemented real-time group ordering using Socket.IO with immediate HTTP response, deferred async socket dispatch, and 6-char share codes with 2-hour isolated session expiry."
 
-  [[project.bullet_4]]
-  what_did_you_build    = "Extensive administrative analytics and heavy test automation"
-  tools_used            = "MongoDB"
-  how_it_works          = "Configured MongoDB aggregation tracking item structures, top-5 sales, and specific missing-date time series logic with zero fills"
-  metric                = "Analytics pipelines hit a 2.17ms average API response across 100 benchmark iterations"
-  
-  [[project.bullet_5]]
-  what_did_you_build    = "An automated deployment test pipeline"
-  tools_used            = "Jest, GitHub Actions, Codecov"
-  how_it_works          = "Wrapped every PR sent towards main branches with stringent pipeline actions utilizing Node 20 architectures"
-  metric                = "Verified stability traversing 50 test files"
+  [[project.achievement]]
+  verb    = "Achieved"
+  what    = "MongoDB analytics pipelines"
+  tool    = "MongoDB"
+  metric  = "2.17ms avg API response"
+  outcome = "top-5 sales tracking and time-series analytics across 100 benchmark iterations"
+  narrative = "Achieved 2.17ms avg API response across 100 benchmark iterations via MongoDB aggregation pipelines tracking item structures, top-5 sales, and time-series with zero-fill."
 
+  [[project.achievement]]
+  verb    = "Automated"
+  what    = "deployment test pipeline"
+  tool    = "Jest + GitHub Actions + Codecov"
+  metric  = "50 test files"
+  outcome = "every PR to main wrapped with CI checks on Node 20"
+  narrative = "Automated deployment test pipeline using Jest, GitHub Actions, and Codecov, verifying stability across 50 test files on every PR to main."
 
 [[project]]
-name = "Academic Integrity Platform"
-tools_used = "Python, FastAPI, Next.js 14, PyTorch, MongoDB, Transformers"
+name       = "Academic Integrity Platform"
+stack      = ["Python", "FastAPI", "Next.js 14", "PyTorch", "MongoDB", "RoBERTa", "DetectGPT", "TF-IDF", "asyncio", "arXiv API"]
 github_link = "https://github.com/SuyeshJadhav/plagiarism-detection"
+dates      = "January 2025 – March 2025"
+summary    = "Async plagiarism detection platform with dual-model ensemble, hybrid lexical-semantic scoring, and automated source extraction."
 
-what_does_it_do = """
-  A hyper-responsive, heavily concurrent asynchronous application architecture running a dual-detection ensemble model configured to prevent system timeouts when handling intense document NLP workloads.
-"""
+  [[project.achievement]]
+  verb    = "Built"
+  what    = "8-stage async processing pipeline"
+  tool    = "FastAPI + Next.js 14 + asyncio"
+  metric  = "14 endpoints"
+  outcome = "upload, conversion, extraction, scraping, and NLP analysis in one flow"
+  narrative = "Built 8-stage async processing pipeline using FastAPI, Next.js 14, and asyncio, directing upload through NLP analysis via 14 endpoints and 3 distinct routers."
 
-  [[project.bullet_1]]
-  what_did_you_build    = "An 8-stage asynchronous processing pipeline"
-  tools_used            = "FastAPI, Next.js 14, asyncio"
-  how_it_works          = "Smoothly directed upload, conversion, extracting, scraping, and NLP analysis via 14 endpoints and 3 distinct routers"
-  
-  [[project.bullet_2]]
-  what_did_you_build    = "A dual AI assessment and perturbation engine"
-  tools_used            = "PyTorch, RoBERTa, DetectGPT"
-  how_it_works          = "Utilized RoBERTa sequence classification alongside a DetectGPT 5-perturbation analysis bridged over a deliberate 400-word chunking strategy"
-  metric                = "Evaded rigid 512-token transformer constraints utilizing a strict 70% average computation against a 30% local peak weighting"
+  [[project.achievement]]
+  verb    = "Implemented"
+  what    = "dual AI assessment and perturbation engine"
+  tool    = "PyTorch + RoBERTa + DetectGPT"
+  metric  = "70% average / 30% peak weighting"
+  outcome = "evaded 512-token transformer limits via 400-word chunking strategy"
+  narrative = "Implemented dual AI engine using RoBERTa sequence classification and DetectGPT 5-perturbation analysis with 400-word chunking, weighted 70/30 average-to-peak computation."
 
-  [[project.bullet_3]]
-  what_did_you_build    = "A hybrid plagiarism structure logic"
-  tools_used            = "TF-IDF, all-MiniLM-L6-v2"
-  how_it_works          = "Merged traditional TF-IDF lexical systems carrying a 30% metric against deep 384D BERT semantics"
-  metric                = "Minimized false positive reads via specialized 0.60 to 0.70 thresholds explicitly bound across 5 distinct category blocks"
+  [[project.achievement]]
+  verb    = "Designed"
+  what    = "hybrid plagiarism scoring system"
+  tool    = "TF-IDF + all-MiniLM-L6-v2"
+  metric  = "0.60–0.70 thresholds"
+  outcome = "minimized false positives across 5 category blocks"
+  narrative = "Designed hybrid plagiarism scoring merging TF-IDF lexical (30%) with 384D BERT semantics, applying 0.60–0.70 thresholds across 5 category blocks to minimize false positives."
 
-  [[project.bullet_4]]
-  what_did_you_build    = "Deep ML concurrency inference profiles"
-  tools_used            = "FastAPI, asyncio.gather"
-  how_it_works          = "Abstracted light frontend client upload connections away from extremely heavy NLP computation via singleton model cache structures and lazy loading"
-  
-  [[project.bullet_5]]
-  what_did_you_build    = "An automated scraping source extraction pipeline"
-  tools_used            = "arXiv API"
-  how_it_works          = "Built out internal intelligent keyword loops filtering 50+ stopwords while immediately hitting arXiv databases to fetch context"
-  metric                = "Pulled up to 5 papers automatically circumventing manual citation comparisons entirely"
-
+  [[project.achievement]]
+  verb    = "Automated"
+  what    = "source extraction pipeline via arXiv API"
+  tool    = "arXiv API"
+  metric  = "5 papers per query"
+  outcome = "eliminated manual citation comparisons via intelligent keyword filtering"
+  narrative = "Automated source extraction pipeline fetching up to 5 arXiv papers per query using intelligent keyword loops filtering 50+ stopwords."
 
 [[project]]
-name = "Acamedia"
-tools_used = "Flutter, NodeJS, ExpressJS, Firebase, Web Sockets, Gemini API"
+name       = "AI Resume Tailoring Engine"
+stack      = ["Python", "FastAPI", "SQLite", "Ollama", "JavaScript", "pytest", "asyncio", "pdflatex"]
+github_link = "https://github.com/SuyeshJadhav/JobAgent"
+dates      = "February 2026 – March 2026"
+summary    = "Backend-first job search automation system with multi-source ingestion, guardrailed LLM scoring, and deterministic resume generation."
+
+  [[project.achievement]]
+  verb    = "Built"
+  what    = "multi-source job ingestion engine"
+  tool    = "Python + ThreadPoolExecutor"
+  metric  = "max_workers=12"
+  outcome = "parallel discovery with per-source timeout controls and fallback handling"
+  narrative = "Built multi-source ingestion engine running parallel discovery with max_workers=12, source-specific timeout controls (10s/12s/15s), and fallback handling preventing full-run failures."
+
+  [[project.achievement]]
+  verb    = "Implemented"
+  what    = "hybrid scoring and guardrails layer"
+  tool    = "Python + Ollama + Groq"
+  metric  = "0-10 rubric across 5 deduction stages"
+  outcome = "combined deterministic gates with LLM scoring and JSON-mode fallback"
+  narrative = "Implemented hybrid scoring combining deterministic gates with LLM scoring on 0–10 rubric across 5 deduction stages including senior-role auto-reject, quant cap, and JSON-mode fallback."
+
+  [[project.achievement]]
+  verb    = "Engineered"
+  what    = "hallucination-resistant resume rewriting safeguards"
+  tool    = "Python"
+  metric  = "zero hallucinated claims in output"
+  outcome = "numeric-claim validation with fallback to original on unsupported claims"
+  narrative = "Engineered hallucination-resistant resume rewriting with numeric-claim validation, 2-attempt retry logic, and automatic fallback to original content when generated claims were unsupported."
+
+  [[project.achievement]]
+  verb    = "Automated"
+  what    = "resume PDF generation and validation pipeline"
+  tool    = "pdflatex + pytest"
+  metric  = "11 pytest contracts"
+  outcome = "60s compile timeout, 2-pass overflow recovery, regression-oriented test coverage"
+  narrative = "Automated resume PDF generation with 60s compile timeout, 2-pass overflow recovery, and 11 pytest contracts protecting core behavior against regressions."
+
+[[project]]
+name       = "Acamedia"
+stack      = ["Flutter", "Node.js", "ExpressJS", "Firebase", "WebSockets", "Gemini API"]
 github_link = "https://github.com/SuyeshJadhav/acamedia"
+dates      = "May 2024 – July 2024"
+summary    = "Cross-platform educational chat app connecting students with teachers via real-time messaging and AI content moderation."
 
-what_does_it_do = """
-  An interactive cross-platform educational chat application connecting students with teachers directly.
-"""
+  [[project.achievement]]
+  verb    = "Deployed"
+  what    = "cross-platform messaging application"
+  tool    = "Flutter"
+  metric  = ""
+  outcome = "iOS and Android interface for student-teacher communication"
+  narrative = "Deployed fully cross-platform iOS/Android messaging application using Flutter, enabling direct student-teacher communication."
 
-  [[project.bullet_1]]
-  what_did_you_build    = "A seamless messaging and communication application"
-  tools_used            = "Flutter"
-  how_it_works          = "Deployed a fully cross-platform (iOS/Android) mobile interface allowing students to immediately contact educational staff"
+  [[project.achievement]]
+  verb    = "Integrated"
+  what    = "automated content moderation layer"
+  tool    = "Gemini API"
+  metric  = ""
+  outcome = "automatic blocking of inappropriate content at message level"
+  narrative = "Integrated Gemini API directly into messaging logic for automated content moderation, scaling platform privacy and compliance enforcement."
 
-  [[project.bullet_2]]
-  what_did_you_build    = "An automated content moderation layer"
-  tools_used            = "Gemini API"
-  how_it_works          = "Integrated Gemini API capabilities directly into the messaging logic to automatically block and moderate inappropriate content"
-  metric                = "Significantly scaled platform privacy and compliance enforcement"
+  [[project.achievement]]
+  verb    = "Built"
+  what    = "real-time synchronization and notification backend"
+  tool    = "Node.js + ExpressJS + Firebase + WebSockets"
+  metric  = ""
+  outcome = "multi-channel real-time push notifications via WebSocket and Firebase listeners"
+  narrative = "Built real-time backend using WebSockets and Firebase listeners for multi-channel push notifications across iOS and Android."
 
-  [[project.bullet_3]]
-  what_did_you_build    = "A real-time synchronization and notification backend"
-  tools_used            = "Node.js, ExpressJS, Firebase, Web Sockets"
-  how_it_works          = "Configured active Web Sockets and Firebase listeners to push robust multi-channel real-time notifications"
+# ══════════════════════════════════════════════
+# VOICE SAMPLES (your natural writing style)
+# ══════════════════════════════════════════════
 
+[[voice_samples]]
+sample = "Owned the whole system — not just a contributor"
 
-[[project]]
-name = "Online Bookstore Website"
-tools_used = "ReactJS, NodeJS, ExpressJS, MongoDb"
-github_link = "https://github.com/SuyeshJadhav/react-bookstore"
+[[voice_samples]]
+sample = "Built from zero with no docs or design to start from"
 
-what_does_it_do = """
-  A full-stack e-commerce marketplace featuring comprehensive user authentication, live search utilities, and secure financial transactions.
-"""
+[[voice_samples]]
+sample = "Eliminated the problem rather than working around it"
 
-  [[project.bullet_1]]
-  what_did_you_build    = "An e-commerce front-end interface"
-  tools_used            = "React.js, Bootstrap"
-  how_it_works          = "Created an immediately responsive UI thoroughly tested on multiple display dimensions featuring shopping carts and search functionalities"
+# ══════════════════════════════════════════════
+# NUMBERS CHEAT SHEET (all verified metrics)
+# ══════════════════════════════════════════════
 
-  [[project.bullet_2]]
-  what_did_you_build    = "REST APIs for marketplace infrastructure"
-  tools_used            = "Node.js, ExpressJS"
-  how_it_works          = "Constructed isolated endpoints parsing catalog queries, issuing secure payments, and maintaining authentication sessions"
-
-  [[project.bullet_3]]
-  what_did_you_build    = "A highly optimized data layer"
-  tools_used            = "MongoDB"
-  how_it_works          = "Structured granular query optimization patterns and memory caching strategies"
-  metric                = "Boosted standard page load speeds by 30%"
-
-
-[[project]]
-name = "Hotel Booking Website"
-tools_used = "PHP, PostgreSQL, CSS, JavaScript, Bootstrap"
-github_link = "https://github.com/SuyeshJadhav/Hotel-Booking-Website"
-
-what_does_it_do = """
-  An intuitive hotel management platform equipping users with room browsing capabilities and robust reservation pipelines.
-"""
-
-  [[project.bullet_1]]
-  what_did_you_build    = "A direct booking logic system"
-  tools_used            = "PHP, PostgreSQL"
-  how_it_works          = "Implemented database connections translating user form data directly into hard-booked reservations"
-
-  [[project.bullet_2]]
-  what_did_you_build    = "A stylistic component interface"
-  tools_used            = "CSS, JavaScript, Bootstrap"
-  how_it_works          = "Styled the entire site utilizing deep framework elements, delivering a universally accessible customer experience"
-
-
-[[project]]
-name = "Pokémon Game"
-tools_used = "Java, Java Swing"
-github_link = "https://github.com/Aditya-Chandran/Pokemon-Game"
-
-what_does_it_do = """
-  A robust battle simulator drawing inspiration from Pokémon Ruby and Sapphire.
-"""
-
-  [[project.bullet_1]]
-  what_did_you_build    = "An escalating combat scaling engine"
-  tools_used            = "Java"
-  how_it_works          = "Programmed logic systems allowing 3v1 entity engagements where AI enemy statistics escalate synchronously across levels"
-
-  [[project.bullet_2]]
-  what_did_you_build    = "A hybrid interface application"
-  tools_used            = "Java Swing"
-  how_it_works          = "Bridged graphical user interactions natively through Java Swing, whilst ensuring the backend logic permitted full terminal execution fallback"
-
-
-[[project]]
-name = "ANA Music Player"
-tools_used = "Python, Tkinter"
-github_link = "https://github.com/Aditya-Chandrn/MP3-Player"
-
-what_does_it_do = """
-  A lightweight graphical desktop MP3 media center.
-"""
-
-  [[project.bullet_1]]
-  what_did_you_build    = "A navigational media GUI"
-  tools_used            = "Python, Tkinter"
-  how_it_works          = "Tied dynamic desktop windowing components directly to audio decoding libraries, implementing add-song logic and intuitive play/pause controls"
+[numbers]
+llm_inference       = "90 tokens/sec"
+nlp_throughput      = "484 texts/sec"
+tweet_latency       = "75ms per tweet"
+sqlite_retrieval    = "2.61ms avg"
+semantic_search     = "190ms"
+api_latency_kjsce   = "40% reduction"
+client_engagement   = "25% improvement"
+cafe_api_response   = "2.17ms avg"
+wolf_endpoints      = "45+"
+wolf_test_files     = "50"
+ai_agent_tools      = "14 tools"
+plagiarism_endpoints = "14 endpoints"
+plagiarism_chunking = "400-word chunks"
+embedding_dims      = "384D"
+umap_reduction      = "384D to 2D"
+platform_users      = "1,000+"

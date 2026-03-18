@@ -5,6 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import asyncio
+import json
 
 from backend.services.resume_tailor import run_tailor
 from backend.services.cover_letter import run_cover_letter
@@ -23,14 +24,8 @@ class GenerateRequest(BaseModel):
     url: Optional[str] = None
 
 
-@router.post("/generate")
-def generate_tailored_resume(payload: GenerateRequest):
-    """
-    JIT (Just-In-Time) resume tailoring endpoint.
-    Accepts a job_id or url, runs the full tailor pipeline,
-    and returns the PDF as base64.
-    """
-    # 1. Resolve job
+def _resolve_job(payload: GenerateRequest) -> dict:
+    """Resolve a tracked job from either job_id or URL payload fields."""
     jobs = get_jobs()
     matched_job = None
 
@@ -43,9 +38,12 @@ def generate_tailored_resume(payload: GenerateRequest):
         raise HTTPException(
             status_code=404, detail="Job not found in tracked jobs.")
 
-    job_id = matched_job["job_id"]
+    return matched_job
 
-    # 2. Load full description
+
+def _load_or_scrape_description(job: dict, fail_context: str) -> dict:
+    """Ensure job has a usable JD description (loads saved details or scrapes on demand)."""
+    job_id = job["job_id"]
     details = load_job_details(job_id)
     if not details:
         raise HTTPException(
@@ -54,45 +52,89 @@ def generate_tailored_resume(payload: GenerateRequest):
     desc = details.get("description", "")
     if not desc or len(desc) < 100:
         print(
-            f"[TAILOR JIT] description missing for {job_id}, invoking scrapling...")
+            f"[{fail_context}] description missing for {job_id}, invoking scrapling...")
         try:
-            desc = asyncio.run(scrape_full_jd(
-                matched_job.get("apply_link", "")))
+            desc = asyncio.run(scrape_full_jd(job.get("apply_link", "")))
             if desc and desc != "SCRAPE_BLOCKED":
-                matched_job["description"] = desc
-            else:
-                raise HTTPException(
-                    status_code=400, detail="JD length < 100 and Scrape failed or was blocked.")
+                job["description"] = desc
+                return job
+            raise HTTPException(
+                status_code=400, detail="JD length < 100 and Scrape failed or was blocked.")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(
                 status_code=500, detail=f"Failed to fetch JD missing text: {e}")
-    else:
-        matched_job["description"] = desc
+
+    job["description"] = desc
+    return job
+
+
+def _find_existing_file_for_job(job_id: str, filename: str) -> Optional[Path]:
+    """Find an already-generated artifact by filename in the matching job output folder."""
+    if not OUTPUT_DIR.exists():
+        return None
+
+    for details_file in OUTPUT_DIR.rglob("job_details.json"):
+        try:
+            with open(details_file, encoding="utf-8") as f:
+                dj = json.load(f)
+            if dj.get("job_id") != job_id:
+                continue
+
+            candidate = details_file.parent / filename
+            if candidate.exists() and candidate.is_file():
+                return candidate
+        except Exception as e:
+            print(f"[TAILOR JIT] Error checking {details_file}: {e}")
+            continue
+
+    return None
+
+
+@router.post("/generate")
+def generate_tailored_resume(payload: GenerateRequest):
+    """
+    JIT (Just-In-Time) resume tailoring endpoint.
+    Accepts a job_id or url, runs the full tailor pipeline,
+    and returns the PDF as base64.
+    """
+    # 1. Resolve job
+    matched_job = _resolve_job(payload)
+    job_id = matched_job["job_id"]
+    matched_job = _load_or_scrape_description(matched_job, "TAILOR JIT")
 
     # 3. Check if a PDF already exists (skip re-tailoring)
-    existing_dir = None
-    if OUTPUT_DIR.exists():
-        for d in OUTPUT_DIR.iterdir():
-            if d.is_dir():
-                details_file = d / "job_details.json"
-                if details_file.exists():
-                    import json
-                    try:
-                        with open(details_file, encoding="utf-8") as f:
-                            dj = json.load(f)
-                        if dj.get("job_id") == job_id:
-                            pdfs = list(d.glob("*.pdf"))
-                            if pdfs:
-                                existing_dir = d
-                                break
-                    except Exception:
-                        pass
-
     pdf_path = None
-    if existing_dir:
-        pdfs = list(existing_dir.glob("*.pdf"))
-        if pdfs:
-            pdf_path = pdfs[0]
+    if OUTPUT_DIR.exists():
+        # Search recursively for job_details.json to find the correct application folder
+        for details_file in OUTPUT_DIR.rglob("job_details.json"):
+            try:
+                with open(details_file, encoding="utf-8") as f:
+                    dj = json.load(f)
+                if dj.get("job_id") == job_id:
+                    # Look for ANY pdf in this same folder
+                    pdfs = list(details_file.parent.glob("*.pdf"))
+                    if pdfs:
+                        # Prioritize the one mentioned in metadata if it exists
+                        meta_resume = dj.get("resume_path")
+                        if meta_resume:
+                            # resume_path might be relative to project root or absolute
+                            rp = Path(meta_resume)
+                            # If it's relative like "outputs/...", make it absolute relative to project root
+                            if not rp.is_absolute():
+                                rp = OUTPUT_DIR.parent.parent / rp
+
+                            if rp.exists() and rp.suffix == ".pdf":
+                                pdf_path = rp
+                                break
+
+                        # Fallback to the first PDF found in the folder
+                        pdf_path = pdfs[0]
+                        break
+            except Exception as e:
+                print(f"[TAILOR JIT] Error checking {details_file}: {e}")
+                continue
 
     if not pdf_path:
         # 4. Run the tailor pipeline
@@ -117,6 +159,47 @@ def generate_tailored_resume(payload: GenerateRequest):
         "job_id": job_id,
         "resume_base64": b64,
         "filename": pdf_path.name,
+    }
+
+
+@router.post("/generate_cover_letter")
+def generate_cover_letter(payload: GenerateRequest):
+    """
+    JIT cover-letter generation endpoint.
+    Accepts a job_id or url, runs cover-letter pipeline,
+    and returns the generated file content as base64.
+    """
+    matched_job = _resolve_job(payload)
+    job_id = matched_job["job_id"]
+    matched_job = _load_or_scrape_description(matched_job, "COVER JIT")
+
+    letter_path = _find_existing_file_for_job(job_id, "cover letter.md")
+
+    if not letter_path:
+        cover_result = run_cover_letter(matched_job)
+        if cover_result.get("status") == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=cover_result.get(
+                    "error", "Cover letter generation failed"),
+            )
+
+        cover_letter_path = cover_result.get("cover_letter_path", "")
+        letter_path = Path(cover_letter_path) if cover_letter_path else None
+        if letter_path:
+            update_job(job_id, cover_letter_path=str(letter_path))
+
+    if not letter_path or not letter_path.exists():
+        raise HTTPException(
+            status_code=500, detail="Cover letter generation failed — file not found.")
+
+    with open(letter_path, "rb") as f:
+        b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    return {
+        "job_id": job_id,
+        "cover_letter_base64": b64,
+        "filename": letter_path.name,
     }
 
 

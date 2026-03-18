@@ -74,7 +74,7 @@ function injectReactSafeValue(element, value) {
 	try {
 		const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
 		const nativeTextAreaValueSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
-		
+
 		if (element.tagName === 'TEXTAREA' && nativeTextAreaValueSetter) {
 			nativeTextAreaValueSetter.call(element, value);
 		} else if (element.tagName === 'INPUT' && nativeInputValueSetter) {
@@ -85,7 +85,7 @@ function injectReactSafeValue(element, value) {
 	} catch (e) {
 		element.value = value;
 	}
-	
+
 	element.dispatchEvent(new Event('input', { bubbles: true }));
 	element.dispatchEvent(new Event('change', { bubbles: true }));
 }
@@ -307,6 +307,7 @@ window._ja = {
 	state: STATE.UNTRACKED,
 	job: null,          // {job_id, score, status, reason, ...}
 	pendingResume: null, // {base64, filename}
+	pendingCoverLetter: null, // {base64, filename, url}
 	resumeInjected: false,
 };
 
@@ -441,7 +442,7 @@ function createFAMButton(id, text, isPrimary = false) {
 	btn.id = id;
 	btn.textContent = text;
 	btn.type = 'button';
-	
+
 	const bg = isPrimary ? '#00ff00' : '#fff';
 	const fg = '#000';
 
@@ -500,21 +501,25 @@ function renderFAMActions() {
 		const btn = createFAMButton('ja-tailor', '📄 Tailor Resume', true);
 		btn.addEventListener('click', handleTailorClick);
 		container.appendChild(btn);
+
+		const btnCover = createFAMButton('ja-cover-generate', '✍️ Generate Cover Letter', false);
+		btnCover.addEventListener('click', handleCoverLetterClick);
+		container.appendChild(btnCover);
 	}
 
 	// ── TAILORED / PREVIEWED: Show "Preview" and "Inject" ──
 	if (state === STATE.TAILORED || state === STATE.PREVIEWED) {
 		const btnPreview = createFAMButton('ja-preview-btn', '🔍 Preview PDF', false);
-		btnPreview.addEventListener('click', () => {
-			if (window._ja.pendingResume && window._ja.pendingResume.url) {
+		btnPreview.addEventListener('click', async () => {
+			if (await ensureResumeLoaded()) {
 				window.open(window._ja.pendingResume.url, '_blank');
-			} else if (window._ja.pendingResume) {
-				const blob = base64ToBlob(window._ja.pendingResume.base64);
-				const url = URL.createObjectURL(blob);
-				window.open(url, '_blank');
 			}
 		});
 		container.appendChild(btnPreview);
+
+		const btnCover = createFAMButton('ja-cover-preview-btn', '✍️ Cover Letter', false);
+		btnCover.addEventListener('click', handleCoverLetterClick);
+		container.appendChild(btnCover);
 
 		const btnInject = createFAMButton('ja-inject-btn', '💉 Inject & Apply', true);
 		btnInject.addEventListener('click', () => handleInjectClick(btnInject));
@@ -653,6 +658,38 @@ async function handleTailorClick() {
 	}
 }
 
+async function handleCoverLetterClick() {
+	const btn = document.getElementById('ja-cover-generate') || document.getElementById('ja-cover-preview-btn');
+	if (!btn) return;
+
+	const originalText = btn.textContent;
+	btn.textContent = '⏳ Writing Cover Letter...';
+	btn.disabled = true;
+
+	try {
+		const ready = await ensureCoverLetterLoaded(btn, originalText);
+		if (!ready) return;
+
+		window.open(window._ja.pendingCoverLetter.url, '_blank');
+
+		btn.textContent = '✅ Cover Letter Ready';
+		btn.style.background = '#fff';
+		btn.style.color = '#000';
+
+		setTimeout(() => {
+			btn.textContent = originalText;
+			btn.disabled = false;
+		}, 1500);
+	} catch (e) {
+		console.error('[JobAgent] Cover Letter error:', e);
+		btn.textContent = '❌ Error';
+		setTimeout(() => {
+			btn.textContent = originalText;
+			btn.disabled = false;
+		}, 2000);
+	}
+}
+
 /** Helper to convert base64 to Blob */
 function base64ToBlob(base64, type = 'application/pdf') {
 	const bc = atob(base64);
@@ -662,8 +699,102 @@ function base64ToBlob(base64, type = 'application/pdf') {
 	return new Blob([ba], { type });
 }
 
+/**
+ * Ensures the cover letter base64/URL is loaded in memory.
+ * This flow is intentionally separate from resume generation.
+ */
+async function ensureCoverLetterLoaded(targetBtn = null, fallbackText = '') {
+	if (window._ja.pendingCoverLetter && (window._ja.pendingCoverLetter.base64 || window._ja.pendingCoverLetter.url)) {
+		if (targetBtn) { targetBtn.disabled = false; }
+		return true;
+	}
+
+	const btn = targetBtn || document.getElementById('ja-cover-generate') || document.getElementById('ja-cover-preview-btn');
+	const origText = fallbackText || (btn ? btn.textContent : '✍️ Cover Letter');
+	if (btn) {
+		btn.textContent = '⏳ Loading...';
+		btn.disabled = true;
+	}
+
+	try {
+		const payload = { url: window.location.href };
+		if (window._ja.job?.job_id) payload.job_id = window._ja.job.job_id;
+
+		const res = await sendBgMessage('coverLetterGenerate', payload);
+		if (res && res.status === 200 && res.data) {
+			const { cover_letter_base64, filename } = res.data;
+			const blob = base64ToBlob(cover_letter_base64, 'text/markdown;charset=utf-8');
+			const url = URL.createObjectURL(blob);
+
+			if (window._ja.pendingCoverLetter?.url) {
+				try { URL.revokeObjectURL(window._ja.pendingCoverLetter.url); } catch (e) { /* noop */ }
+			}
+
+			window._ja.pendingCoverLetter = {
+				base64: cover_letter_base64,
+				filename: filename || 'cover letter.md',
+				url,
+			};
+
+			if (btn) {
+				btn.textContent = origText;
+				btn.disabled = false;
+			}
+			return true;
+		}
+	} catch (e) {
+		console.error('[JobAgent] ensureCoverLetterLoaded error:', e);
+	}
+
+	if (btn) {
+		btn.textContent = '❌ Failed';
+		setTimeout(() => {
+			btn.textContent = origText;
+			btn.disabled = false;
+		}, 2000);
+	}
+	return false;
+}
+
+/** 
+ * Ensures the tailored resume base64/URL is loaded in memory.
+ * If missing (e.g. after refresh), it fetches it from the JIT endpoint.
+ */
+async function ensureResumeLoaded() {
+	if (window._ja.pendingResume && (window._ja.pendingResume.base64 || window._ja.pendingResume.url)) {
+		return true;
+	}
+
+	const btn = document.getElementById('ja-preview-btn') || document.getElementById('ja-inject-btn') || document.getElementById('ja-tailor');
+	const origText = btn ? btn.textContent : '';
+	if (btn) { btn.textContent = '⏳ Loading...'; btn.disabled = true; }
+
+	try {
+		const payload = { url: window.location.href };
+		if (window._ja.job?.job_id) payload.job_id = window._ja.job.job_id;
+
+		const res = await sendBgMessage('tailorGenerate', payload);
+		if (res && res.status === 200 && res.data) {
+			const { resume_base64, filename } = res.data;
+			const blob = base64ToBlob(resume_base64);
+			const url = URL.createObjectURL(blob);
+			window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf', url: url };
+			if (btn) { btn.textContent = origText; btn.disabled = false; }
+			return true;
+		}
+	} catch (e) {
+		console.error('[JobAgent] ensureResumeLoaded error:', e);
+	}
+
+	if (btn) {
+		btn.textContent = '❌ Failed';
+		setTimeout(() => { btn.textContent = origText; btn.disabled = false; }, 2000);
+	}
+	return false;
+}
+
 async function handleInjectClick(btn) {
-	if (!window._ja.pendingResume) return;
+	if (!(await ensureResumeLoaded())) return;
 	const { base64, filename } = window._ja.pendingResume;
 	const fi = document.querySelector('input[type="file"], [data-automation-id="file-upload-input-ref"]');
 

@@ -139,4 +139,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 			});
 		return true;
 	}
+
+	if (request.action === 'coverLetterGenerate') {
+		fetch('http://localhost:8000/api/tailor/generate_cover_letter', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(request.payload),
+		})
+			.then(async (res) => {
+				if (res.status === 404) {
+					sendResponse({ status: 404, data: null });
+					return;
+				}
+				if (!res.ok) throw new Error(`API Error: ${res.status}`);
+				return res.json();
+			})
+			.then(data => {
+				if (data) sendResponse({ status: 200, data });
+			})
+			.catch(err => {
+				console.error('Cover Letter Generate error:', err);
+				sendResponse({ status: 500, error: err.message });
+			});
+		return true;
+	}
 });
