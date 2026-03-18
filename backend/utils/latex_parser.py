@@ -85,3 +85,22 @@ def cleanup_latex_aux_files(output_dir: Path, filename: str):
                 aux_file.unlink()
             except OSError:
                 pass
+
+
+def escape_latex_text(text: str) -> str:
+    """Escape special LaTeX characters in plain text.
+    Single source of truth — import from here."""
+    replacements = {
+        "\\": r"\textbackslash{}",
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+    }
+    out = []
+    for ch in text:
+        out.append(replacements.get(ch, ch))
+    return "".join(out)

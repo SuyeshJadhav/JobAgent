@@ -1,12 +1,14 @@
+import logging
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
-from datetime import datetime
-from backend.services.sheets_manager import GoogleSheetsManager
 from backend.services.job_sources import fetch_simplify_jobs
 
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(tags=["Tracking"])
-sheets_manager = GoogleSheetsManager()
 
 
 class TrackJobPayload(BaseModel):
@@ -27,15 +29,11 @@ def track_job(payload: TrackJobPayload):
         dict: Success status and message.
     """
     try:
-        date_added = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        sheets_manager.append_job_row(
-            title=payload.title,
-            company=payload.company,
-            url=payload.url,
-            status="Saved",
-            date_added=date_added
-        )
-        return {"status": "success", "message": "Job tracked successfully"}
+        logger.warning("Google Sheets sync not available")
+        return {
+            "status": "success",
+            "message": "Google Sheets sync not available",
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -86,12 +84,13 @@ def sync_github_jobs(
                 "date_added": date_added
             })
 
-        # 3. Batch-add to Sheets (handles dedup internally)
-        result = sheets_manager.batch_append_job_rows(sheet_rows)
+        # 3. Sheets sync is disabled after sheets_manager removal.
+        logger.warning("Google Sheets sync not available")
+        result = {"added": 0, "skipped": len(sheet_rows)}
 
         return {
             "status": "success",
-            "message": f"Synced {result['added']} new jobs to Sheets ({result['skipped']} duplicates skipped).",
+            "message": "Google Sheets sync not available",
             "total_fetched": len(jobs),
             "added": result["added"],
             "skipped": result["skipped"]

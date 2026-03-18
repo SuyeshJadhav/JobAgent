@@ -6,7 +6,8 @@ from urllib.parse import urlparse
 
 from backend.services.llm_client import get_llm_client, get_model_name
 from backend.services.db_tracker import _get_readable_job_dir
-from backend.utils.latex_parser import cleanup_latex_aux_files
+from backend.utils.latex_parser import cleanup_latex_aux_files, escape_latex_text
+from backend.utils.reference_loader import load_references
 
 ROOT_DIR = Path(__file__).parent.parent.parent
 REFERENCES_DIR = ROOT_DIR / "references"
@@ -35,37 +36,6 @@ _DATE_LINE_RE = re.compile(
     r"^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2},\s+\d{4}$",
     flags=re.IGNORECASE,
 )
-
-
-def load_references() -> dict:
-    """Load candidate_profile, cover_letter_tone, and context_bank."""
-    refs = {}
-
-    if CANDIDATE_PROFILE.exists():
-        refs["candidate_profile"] = CANDIDATE_PROFILE.read_text(
-            encoding="utf-8")
-    else:
-        refs["candidate_profile"] = ""
-
-    if COVER_LETTER_TONE.exists():
-        refs["cover_letter_tone"] = COVER_LETTER_TONE.read_text(
-            encoding="utf-8")
-    else:
-        refs["cover_letter_tone"] = ""
-
-    if COVER_LETTER_TEX_TEMPLATE.exists():
-        refs["cover_letter_tex_template"] = COVER_LETTER_TEX_TEMPLATE.read_text(
-            encoding="utf-8")
-    else:
-        refs["cover_letter_tex_template"] = ""
-
-    if CONTEXT_BANK.exists():
-        with open(CONTEXT_BANK, "rb") as f:
-            refs["context_bank"] = tomllib.load(f)
-    else:
-        refs["context_bank"] = {}
-
-    return refs
 
 
 def _build_context_summary(context_bank: dict) -> str:
@@ -518,27 +488,10 @@ def clean_llm_cover_letter(raw: str, max_words: int = 250, company_name: str = "
     # Ensure the opening paragraph contains the exact company token used in the job record.
     if company_name and paragraphs:
         if company_name.lower() not in paragraphs[0].lower():
-            paragraphs[0] = f"At {company_name}, {paragraphs[0][:1].lower()}{paragraphs[0][1:]}"
+            paragraphs[0] = f"At {company_name}, {paragraphs[0]}"
 
     paragraphs = _truncate_paragraphs(paragraphs, max_words=max_words)
     return "\n\n".join(paragraphs).strip()
-
-
-def _escape_latex_text(text: str) -> str:
-    replacements = {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-    }
-    out = []
-    for ch in text:
-        out.append(replacements.get(ch, ch))
-    return "".join(out)
 
 
 def _compile_cover_letter_to_pdf(tex_content: str, output_dir: Path, filename: str) -> dict:
@@ -610,11 +563,11 @@ def run_cover_letter(job: dict) -> dict:
     # Prepare LaTeX content
     tex_content = refs["cover_letter_tex_template"]
     tex_content = tex_content.replace(
-        "{{COMPANY}}", _escape_latex_text(company_name))
+        "{{COMPANY}}", escape_latex_text(company_name))
     tex_content = tex_content.replace(
-        "{{ROLE}}", _escape_latex_text(job_title))
+        "{{ROLE}}", escape_latex_text(job_title))
     tex_content = tex_content.replace(
-        "{{CONTENT}}", _escape_latex_text(letter_text))
+        "{{CONTENT}}", escape_latex_text(letter_text))
 
     # Optional: Basic escaping for letter_text if it contains LaTeX special chars
     # However, LLM is instructed to return plain text. If we escape too much, it might break formatting.

@@ -3,8 +3,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from pathlib import Path
-from dotenv import load_dotenv
-load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 
 
 app = FastAPI(title="JobAgent Backend API")

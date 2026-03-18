@@ -6,15 +6,23 @@ env/
 
 # Python Compilation Files
 __pycache__/
+*.pyc
+*.pyo
 *.py[cod]
 *$py.class
 
 # Application Data & Auto-Generated Local Storage
 outputs/
+outputs/applications/
+outputs/seen_jobs.json
+outputs/scout_meta.json
 backend/tracked_jobs.db
 backend/tracked_jobs.xlsx
 tracked_jobs.csv
 tracked_jobs.csv.backup
+*.db
+*.xlsx
+*.bak
 
 # IDEs & Editor configurations
 .vscode/

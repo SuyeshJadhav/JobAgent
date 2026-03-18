@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Any
 from backend.services.llm_client import get_tailor_client
+from backend.utils.latex_parser import escape_latex_text
 
 
 def sanitize_llm_latex(raw: str) -> str:
@@ -280,23 +281,6 @@ def rank_projects_for_jd(jd_text: str, context_bank: dict, keywords: dict = None
     return scored, diagnostics
 
 
-def _escape_latex_text(text: str) -> str:
-    replacements = {
-        "\\": r"\textbackslash{}",
-        "&": r"\&",
-        "%": r"\%",
-        "$": r"\$",
-        "#": r"\#",
-        "_": r"\_",
-        "{": r"\{",
-        "}": r"\}",
-    }
-    out = []
-    for ch in text:
-        out.append(replacements.get(ch, ch))
-    return "".join(out)
-
-
 def _project_to_bullets(project: dict, max_bullets: int = 3) -> str:
     lines = []
     for payload in _project_bullet_payloads(project):
@@ -317,7 +301,7 @@ def _project_to_bullets(project: dict, max_bullets: int = 3) -> str:
         if sentence:
             sentence = sentence + "."
         if sentence:
-            lines.append(rf"\bitem{{{_escape_latex_text(sentence)}}}")
+            lines.append(rf"\bitem{{{escape_latex_text(sentence)}}}")
         if len(lines) >= max_bullets:
             break
     return "\n".join(lines)
@@ -428,9 +412,9 @@ def build_ranked_projects_section(job_description: str, context_bank: dict, stra
             max_bold_per_bullet=2,
         )
 
-        heading_name = _escape_latex_text(str(project.get("name", "Project")))
-        heading_tools = _escape_latex_text(_project_tools_string(project))
-        heading_date = _escape_latex_text(
+        heading_name = escape_latex_text(str(project.get("name", "Project")))
+        heading_tools = escape_latex_text(_project_tools_string(project))
+        heading_date = escape_latex_text(
             str(project.get("dates") or project.get("date") or "")
         )
 

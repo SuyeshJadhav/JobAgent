@@ -30,7 +30,7 @@ def test_run_cover_letter_writes_expected_filename(tmp_path):
                 result = run_cover_letter(job)
 
     assert result["status"] == "success"
-    assert Path(result["cover_letter_path"]).name == "cover letter.md"
+    assert Path(result["cover_letter_path"]).name == "cover_letter.md"
     assert Path(result["cover_letter_path"]).exists()
 
 

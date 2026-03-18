@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from backend.services.llm_client import get_llm_client, get_model_name
+from backend.utils.profile_loader import load_profile_file
 
 try:
     import chromadb
@@ -24,7 +25,7 @@ if CHROMA_AVAILABLE:
     chroma_client = chromadb.PersistentClient(path=str(VECTOR_CACHE_DIR))
     # Use default MiniLM-L6-v2 embedding function locally
     emb_fn = embedding_functions.DefaultEmbeddingFunction()
-    
+
     # Get or create the cache collection
     cache_collection = chroma_client.get_or_create_collection(
         name="autofill_cache",
@@ -37,12 +38,6 @@ def _normalize_key(field_name: str) -> str:
     """Normalize a field name for fast path lookups."""
     return field_name.strip().lower()
 
-def load_profile_file(filename: str) -> str:
-    path = PROFILE_DIR / filename
-    if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return ""
 
 def _build_fast_path_map() -> dict[str, str]:
     """
@@ -50,7 +45,7 @@ def _build_fast_path_map() -> dict[str, str]:
     Parsed at call time so values stay in sync with profile data.
     """
     profile_data = {}
-    
+
     # Load all profile files and extract all KEY: VALUE pairs
     for filename in ["personal_info.md", "visa.md", "education.md"]:
         content = load_profile_file(filename)
@@ -61,10 +56,12 @@ def _build_fast_path_map() -> dict[str, str]:
             profile_data[key] = v.strip()
 
     # Derived fields
-    first = profile_data.get("first name") or profile_data.get("first name") or ""
+    first = profile_data.get(
+        "first name") or profile_data.get("first name") or ""
     middle = profile_data.get("middle name") or ""
     last = profile_data.get("last name") or profile_data.get("last name") or ""
-    full = profile_data.get("full name") or f"{first} {middle} {last}".replace("  ", " ").strip()
+    full = profile_data.get(
+        "full name") or f"{first} {middle} {last}".replace("  ", " ").strip()
 
     # Base map
     fast_map = {
@@ -97,7 +94,7 @@ def _build_fast_path_map() -> dict[str, str]:
         "disability":       "I don't wish to answer",
         "handicap":         "I don't wish to answer",
     })
-    
+
     return {k: v for k, v in fast_map.items() if v}
 
 
@@ -138,7 +135,7 @@ def _handle_standard_fields(fields: list[str]) -> tuple[dict[str, str], list[str
         fast_answer = _match_fast_path(field, fast_map)
         if fast_answer is not None:
             results[field] = fast_answer
-            
+
             # Synchronize this value to Vector Cache (Tier 2) to prevent stale hits
             if cache_collection is not None:
                 try:
@@ -147,7 +144,8 @@ def _handle_standard_fields(fields: list[str]) -> tuple[dict[str, str], list[str
                     cache_collection.upsert(
                         ids=[deterministic_id],
                         documents=[field],
-                        metadatas=[{"answer": fast_answer, "source": "fast_path"}]
+                        metadatas=[
+                            {"answer": fast_answer, "source": "fast_path"}]
                     )
                 except Exception:
                     pass
@@ -164,10 +162,11 @@ def _handle_standard_fields(fields: list[str]) -> tuple[dict[str, str], list[str
                 if qr['distances'] and qr['distances'][0] and qr['distances'][0][0] < 0.4:
                     if qr['metadatas'] and qr['metadatas'][0]:
                         cached_answer = qr['metadatas'][0][0].get('answer')
-                        print(f"[CACHE HIT] '{field}' matched '{qr['documents'][0][0]}' (dist: {qr['distances'][0][0]:.3f})")
+                        print(
+                            f"[CACHE HIT] '{field}' matched '{qr['documents'][0][0]}' (dist: {qr['distances'][0][0]:.3f})")
             except Exception as e:
                 print(f"[WARN] Chroma DB query failed for '{field}': {e}")
-                
+
         if cached_answer is not None:
             results[field] = cached_answer
             continue
@@ -185,7 +184,7 @@ def _generate_llm_answers(llm_fields: list[str], job_url: str = "", company: str
     """
     if not llm_fields:
         return {}
-        
+
     results = {}
     company_lower = (company or "").strip().lower()
 
@@ -246,7 +245,8 @@ def _generate_llm_answers(llm_fields: list[str], job_url: str = "", company: str
 
         # Fallback: extract JSON from markdown code fences
         if llm_answers is None:
-            json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+            json_match = re.search(
+                r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
             if json_match:
                 try:
                     llm_answers = json_mod.loads(json_match.group(1))
@@ -269,7 +269,7 @@ def _generate_llm_answers(llm_fields: list[str], job_url: str = "", company: str
             new_docs = []
             new_metadatas = []
             new_ids = []
-            
+
             for field_name, answer in llm_answers.items():
                 if answer == "Not specified in profile.":
                     continue
@@ -277,11 +277,11 @@ def _generate_llm_answers(llm_fields: list[str], job_url: str = "", company: str
                 if company_lower and company_lower in field_name.lower():
                     print(f"[CACHE] Skipping company-specific: '{field_name}'")
                     continue
-                
+
                 new_docs.append(field_name)
                 new_metadatas.append({"answer": answer, "source": "llm"})
                 new_ids.append(str(uuid.uuid4()))
-                
+
             # Add to Chroma
             if cache_collection is not None and new_docs:
                 try:
@@ -290,7 +290,8 @@ def _generate_llm_answers(llm_fields: list[str], job_url: str = "", company: str
                         metadatas=new_metadatas,
                         ids=new_ids
                     )
-                    print(f"[CACHE] Added {len(new_docs)} new answers to vector db")
+                    print(
+                        f"[CACHE] Added {len(new_docs)} new answers to vector db")
                 except Exception as e:
                     print(f"[WARN] Failed to write to vector db: {e}")
 
@@ -316,12 +317,14 @@ def batch_fill_fields(fields: list[str], job_url: str = "", company: str = "") -
     """
     # Step 1: Handle standard fields via fast path and vector cache
     results, llm_fields = _handle_standard_fields(fields)
-    
+
     # Calculate stats
     fast_map = _build_fast_path_map()
-    fast_path_count = sum(1 for f in fields if f in results and _match_fast_path(f, fast_map) is not None)
+    fast_path_count = sum(
+        1 for f in fields if f in results and _match_fast_path(f, fast_map) is not None)
     cache_count = len(results) - fast_path_count
-    print(f"[FILL] Fast Path: {fast_path_count} | Cache Hits: {cache_count} | LLM: {len(llm_fields)}")
+    print(
+        f"[FILL] Fast Path: {fast_path_count} | Cache Hits: {cache_count} | LLM: {len(llm_fields)}")
 
     # Step 2: Handle remaining fields via LLM
     if llm_fields:
@@ -330,4 +333,3 @@ def batch_fill_fields(fields: list[str], job_url: str = "", company: str = "") -
 
     # Step 3: Return the merged dictionary
     return results
-
