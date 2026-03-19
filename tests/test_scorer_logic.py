@@ -22,8 +22,8 @@ def test_parse_llm_json_response_falls_back_to_regex_when_invalid_json():
 
     result = parse_llm_json_response(content)
 
-    # Score is clamped to 0-10 in parser
-    assert result["score"] == 10
+    # Score is clamped to 0-100 in parser
+    assert result["score"] == 11
     assert result["company"] == "Acme"
     assert result["title"] == "Role"
 
@@ -38,7 +38,7 @@ def test_score_job_quant_company_is_capped_without_llm():
 
     result = score_job(job, profile)
 
-    assert result["score"] == 2
+    assert result["score"] == 20
     assert "Quant firm" in result["reasoning"]
 
 
@@ -60,7 +60,7 @@ def test_score_job_senior_title_is_auto_rejected_without_llm():
 @patch("backend.services.scorer._llm_score")
 def test_score_job_adds_sponsorship_bonus(mock_llm_score, mock_get_settings):
     mock_llm_score.return_value = {
-        "score": 7,
+        "score": 70,
         "reasoning": "Base score",
         "company": "Acme",
         "title": "SWE Intern",
@@ -78,5 +78,5 @@ def test_score_job_adds_sponsorship_bonus(mock_llm_score, mock_get_settings):
 
     result = score_job(job, profile)
 
-    assert result["score"] == 8
+    assert result["score"] == 80
     assert result["reasoning"].startswith("[SPONSORED]")

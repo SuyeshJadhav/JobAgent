@@ -41,6 +41,15 @@ _VALIDATOR_COMMON_TOOL_TERMS = {
 }
 
 TOOL_ALIASES = {
+    "javascript": "react",
+    "umap": "umap",
+    "llama": "llama 3.2",
+    "react": "react",
+    "sqlite": "sqlite",
+    "chromadb": "chromadb",
+    "fastapi": "fastapi",
+    "pytorch": "pytorch",
+    "mongodb": "mongodb",
     "node": "node.js",
     "nodejs": "node.js",
     "postgres": "postgresql",
@@ -94,6 +103,12 @@ def _extract_tool_terms_from_text(raw_value: str) -> set[str]:
             if slash_term:
                 terms.add(slash_term)
 
+        # Capture versioned or combined tools like "React 19 + D3.js + UMAP".
+        for plus_split in re.split(r"\s+\+\s+", part):
+            plus_term = _normalize_tool_term(plus_split)
+            if plus_term:
+                terms.add(plus_term)
+
     return {term for term in terms if term and len(term) >= 2}
 
 
@@ -127,12 +142,39 @@ def _collect_context_bank_tool_terms(context_bank: dict) -> set[str]:
                 _walk(item)
 
     _walk(context_bank)
-    return {_canonicalize_tool_term(term) for term in terms if term}
+    return {_canonicalize_tool_term(term).lower() for term in terms if term}
 
 
 def _collect_context_bank_numbers(context_bank: dict) -> set[str]:
     raw = json.dumps(context_bank, ensure_ascii=False)
     return set(re.findall(r"\b\d+(?:\.\d+)?\b", raw))
+
+
+def _is_meaningful_metric(n: str) -> bool:
+    """Only flag numbers that could be real metrics, not version-like tokens."""
+    try:
+        val = float(n)
+    except (TypeError, ValueError):
+        return False
+
+    if val < 10 and "." not in n:
+        return False
+
+    version_numbers = {
+        3.2, 3.1, 19.0, 14.0, 2.0, 1.0,
+        3.0, 4.0, 20.0,
+    }
+    if val in version_numbers:
+        return False
+
+    return True
+
+
+def _extract_meaningful_numbers(text: str) -> set[str]:
+    return {
+        n for n in re.findall(r"\b\d+(?:\.\d+)?\b", text)
+        if _is_meaningful_metric(n)
+    }
 
 
 def _extract_first_word_for_action_check(visible_text: str) -> str:
@@ -200,7 +242,7 @@ def _validate_single_bullet_payload(payload: str, context_bank: dict) -> list[st
         warnings.append("[action_verb]")
 
     allowed_numbers = _collect_context_bank_numbers(context_bank)
-    bullet_numbers = set(re.findall(r"\b\d+(?:\.\d+)?\b", visible))
+    bullet_numbers = _extract_meaningful_numbers(visible)
     if any(n not in allowed_numbers for n in bullet_numbers):
         warnings.append("[numbers]")
 
@@ -208,11 +250,12 @@ def _validate_single_bullet_payload(payload: str, context_bank: dict) -> list[st
         _canonicalize_tool_term(tool)
         for tool in _collect_context_bank_tool_terms(context_bank)
     }
+    allowed_tools_normalized = {tool.lower() for tool in allowed_tools}
     candidates = set(allowed_tools)
     candidates.update({_canonicalize_tool_term(tool)
                       for tool in _VALIDATOR_COMMON_TOOL_TERMS})
     mentioned_tools = _find_tool_mentions(visible, candidates)
-    if any(_canonicalize_tool_term(tool) not in allowed_tools for tool in mentioned_tools):
+    if any(_canonicalize_tool_term(tool).lower() not in allowed_tools_normalized for tool in mentioned_tools):
         warnings.append("[tools]")
 
     if len(visible) > _VALIDATOR_BULLET_MAX_VISIBLE_CHARS:
@@ -236,6 +279,7 @@ def _validate_generated_resume_artifacts(output_dir: Path, context_bank: dict) -
         _canonicalize_tool_term(tool)
         for tool in _collect_context_bank_tool_terms(context_bank)
     }
+    allowed_tools_normalized = {tool.lower() for tool in allowed_tools}
     tool_candidates = {
         _canonicalize_tool_term(tool) for tool in allowed_tools
     }
@@ -243,7 +287,6 @@ def _validate_generated_resume_artifacts(output_dir: Path, context_bank: dict) -
         {_canonicalize_tool_term(tool)
             for tool in _VALIDATOR_COMMON_TOOL_TERMS}
     )
-
     for idx, bullet in enumerate(bullets, start=1):
         visible = _visible_text_from_latex(bullet)
         lowered_visible = visible.lower()
@@ -264,7 +307,7 @@ def _validate_generated_resume_artifacts(output_dir: Path, context_bank: dict) -
                 f"[action_verb] bullet {idx}: first action word '{first_word}' is not allowed"
             )
 
-        bullet_numbers = set(re.findall(r"\b\d+(?:\.\d+)?\b", visible))
+        bullet_numbers = _extract_meaningful_numbers(visible)
         unknown_numbers = sorted(
             n for n in bullet_numbers if n not in allowed_numbers)
         if unknown_numbers:
@@ -276,7 +319,7 @@ def _validate_generated_resume_artifacts(output_dir: Path, context_bank: dict) -
         unknown_tools = sorted(
             _canonicalize_tool_term(tool)
             for tool in mentioned_tools
-            if _canonicalize_tool_term(tool) not in allowed_tools
+            if _canonicalize_tool_term(tool).lower() not in allowed_tools_normalized
         )
         if unknown_tools:
             warnings.append(

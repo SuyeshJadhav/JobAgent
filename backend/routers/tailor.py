@@ -14,8 +14,15 @@ from backend.services.db_tracker import (
 )
 from backend.services.llm_client import get_settings
 from backend.services.jd_scraper import scrape_full_jd
+from backend.services.threshold_policy import (
+    normalize_score_to_percent,
+    resolve_score_threshold,
+    threshold_rejection_detail,
+)
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
+
+
 OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "applications"
 
 
@@ -92,6 +99,25 @@ def _find_existing_file_for_job(job_id: str, filename: str) -> Optional[Path]:
     return None
 
 
+def _enforce_threshold_if_scored(job: dict):
+    score_value = job.get("score")
+    if score_value is None:
+        return
+
+    settings = get_settings()
+    threshold = resolve_score_threshold(settings)
+    normalized_score = normalize_score_to_percent(score_value)
+    if normalized_score < threshold:
+        raise HTTPException(
+            status_code=400,
+            detail=threshold_rejection_detail(
+                normalized_score,
+                threshold,
+                "Job score below threshold",
+            ),
+        )
+
+
 @router.post("/generate")
 def generate_tailored_resume(payload: GenerateRequest):
     """
@@ -102,6 +128,8 @@ def generate_tailored_resume(payload: GenerateRequest):
     # 1. Resolve job
     matched_job = _resolve_job(payload)
     job_id = matched_job["job_id"]
+    _enforce_threshold_if_scored(matched_job)
+
     matched_job = _load_or_scrape_description(matched_job, "TAILOR JIT")
 
     # 3. Check if a PDF already exists (skip re-tailoring)
@@ -171,6 +199,8 @@ def generate_cover_letter(payload: GenerateRequest):
     """
     matched_job = _resolve_job(payload)
     job_id = matched_job["job_id"]
+    _enforce_threshold_if_scored(matched_job)
+
     matched_job = _load_or_scrape_description(matched_job, "COVER JIT")
 
     letter_path = _find_existing_file_for_job(job_id, "cover letter.md")
@@ -244,10 +274,17 @@ def run_tailor_endpoint(job_id: str):
 
     # 4. Validate score
     settings = get_settings()
-    threshold = int(settings.get("score_threshold", 6))
-    if int(job.get("score", 0)) < threshold:
+    threshold = resolve_score_threshold(settings)
+    normalized_score = normalize_score_to_percent(job.get("score", 0))
+    if normalized_score < threshold:
         raise HTTPException(
-            status_code=400, detail="Job score below threshold")
+            status_code=400,
+            detail=threshold_rejection_detail(
+                normalized_score,
+                threshold,
+                "Job score below threshold",
+            ),
+        )
 
     # 5. Validate status
     if job.get("status") != "shortlisted":

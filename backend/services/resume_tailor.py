@@ -18,6 +18,10 @@ from backend.utils.reference_loader import load_references
 from backend.utils.latex_utils import (
     _sanitize_tex_string,
     _sanitize_tailored_content,
+    _extract_bitem_payload_spans,
+    _visible_text_from_latex,
+    _escape_latex_inline,
+    _trim_visible_text_to_limit,
 )
 from backend.services.bullet_validator import (
     _validate_generated_resume_artifacts,
@@ -72,6 +76,183 @@ def _replace_projects_section(tex_string: str, projects_section_tex: str) -> str
         re.DOTALL,
     )
     return pattern.sub(lambda _m: projects_section_tex + "\n", tex_string)
+
+
+def _warning_categories(warnings: list[str]) -> set[str]:
+    categories = set()
+    for warning in warnings:
+        match = re.match(r"^\[([^\]]+)\]", str(warning).strip())
+        if match:
+            categories.add(match.group(1).lower())
+    return categories
+
+
+def _classify_validation_warnings(warnings: list[str]) -> dict:
+    fixable = {"ownership", "action_verb", "length"}
+    hard = {"nouns", "tools", "numbers"}
+    categories = _warning_categories(warnings)
+    return {
+        "fixable": sorted(categories & fixable),
+        "hard": sorted(categories & hard),
+        "other": sorted(categories - fixable - hard),
+    }
+
+
+def _trim_long_bullets_deterministically(tex_string: str, max_visible_chars: int = 200) -> str:
+    spans = _extract_bitem_payload_spans(tex_string)
+    if not spans:
+        return tex_string
+
+    updated = tex_string
+    for start, end, payload in sorted(spans, key=lambda item: item[0], reverse=True):
+        visible = _visible_text_from_latex(payload)
+        if len(visible) <= max_visible_chars:
+            continue
+
+        trimmed_visible = _trim_visible_text_to_limit(
+            visible, max_visible_chars)
+        trimmed_visible = trimmed_visible.strip()
+        if trimmed_visible and not trimmed_visible.endswith("."):
+            trimmed_visible += "."
+        replacement = _escape_latex_inline(trimmed_visible)
+        updated = updated[:start] + replacement + updated[end:]
+
+    return updated
+
+
+def _resolve_bullet_section(prefix: str) -> str:
+    matches = list(re.finditer(r"\\section\{([^}]*)\}", prefix))
+    if not matches:
+        return "OTHER"
+    section_name = matches[-1].group(1).strip().lower()
+    if section_name.startswith("projects"):
+        return "PROJECTS"
+    if section_name.startswith("experience"):
+        return "EXPERIENCE"
+    return "OTHER"
+
+
+def _resolve_project_group(prefix: str) -> str:
+    matches = list(
+        re.finditer(
+            r"\\projectheading.*?\\textbf\{([^}]*)\}", prefix, flags=re.DOTALL)
+    )
+    if matches:
+        return f"PROJECTS: {matches[-1].group(1).strip()}"
+    return "PROJECTS: Unknown"
+
+
+def _resolve_experience_group(prefix: str) -> str:
+    matches = list(
+        re.finditer(
+            r"\\subheading\s*\n\s*\{([^}]*)\}\{[^}]*\}\s*\n\s*\{[^}]*\}\{[^}]*\}",
+            prefix,
+            flags=re.DOTALL,
+        )
+    )
+    if matches:
+        return f"EXPERIENCE: {matches[-1].group(1).strip()}"
+    return "EXPERIENCE: Unknown"
+
+
+def _sectioned_bullet_index(tex_string: str) -> dict[int, dict]:
+    spans = _extract_bitem_payload_spans(tex_string)
+    if not spans:
+        return {}
+
+    counters: dict[tuple[str, str], int] = {}
+    mapping: dict[int, dict] = {}
+    for global_idx, (start, end, payload) in enumerate(spans, start=1):
+        prefix = tex_string[:start]
+        section = _resolve_bullet_section(prefix)
+
+        if section == "PROJECTS":
+            group = _resolve_project_group(prefix)
+        elif section == "EXPERIENCE":
+            group = _resolve_experience_group(prefix)
+        else:
+            group = section
+
+        key = (section, group)
+        local_idx = counters.get(key, 0) + 1
+        counters[key] = local_idx
+
+        mapping[global_idx] = {
+            "global_index": global_idx,
+            "section": section,
+            "group": group,
+            "local_index": local_idx,
+            "start": start,
+            "end": end,
+            "payload": payload,
+        }
+
+    return mapping
+
+
+def _hard_warning_entries(warnings: list[str], mapping: dict[int, dict]) -> list[dict]:
+    hard_categories = {"nouns", "tools", "numbers"}
+    entries = []
+    for warning in warnings:
+        match = re.match(r"^\[([^\]]+)\]\s+bullet\s+(\d+):",
+                         str(warning).strip(), flags=re.IGNORECASE)
+        if not match:
+            continue
+        category = match.group(1).lower()
+        if category in hard_categories:
+            idx = int(match.group(2))
+            bullet = mapping.get(idx)
+            if not bullet:
+                continue
+            entries.append({
+                "category": category,
+                "global_index": idx,
+                "section": bullet["section"],
+                "group": bullet["group"],
+                "local_index": bullet["local_index"],
+            })
+    return entries
+
+
+def _fallback_bullets_to_source(
+    tex_string: str,
+    base_tex_string: str,
+    warning_entries: list[dict],
+) -> str:
+    if not warning_entries:
+        return tex_string
+
+    current_map = _sectioned_bullet_index(tex_string)
+    base_map = _sectioned_bullet_index(base_tex_string)
+    if not current_map or not base_map:
+        return tex_string
+
+    base_by_key = {
+        (entry["section"], entry["group"], entry["local_index"]): entry["payload"]
+        for entry in base_map.values()
+    }
+
+    replacements = []
+    for warning in warning_entries:
+        key = (warning["section"], warning["group"], warning["local_index"])
+        replacement = base_by_key.get(key)
+        current_entry = current_map.get(warning["global_index"])
+        if not replacement or not current_entry:
+            continue
+        replacements.append((
+            current_entry["start"],
+            current_entry["end"],
+            replacement,
+        ))
+
+    if not replacements:
+        return tex_string
+
+    updated = tex_string
+    for start, end, replacement in sorted(replacements, key=lambda item: item[0], reverse=True):
+        updated = updated[:start] + replacement + updated[end:]
+
+    return updated
 
 
 def _tighten_projects_bullets(tex_string: str, max_items_per_project: int = 2) -> str:
@@ -280,6 +461,25 @@ def run_tailor(job: dict) -> dict:
     jd_keywords = extract_jd_keywords(_jd_desc)
     timings["extract_jd_keywords"] = round(time.perf_counter() - t0, 3)
 
+    deterministic_experience_ready = False
+    prebuilt_experience_section = None
+    prebuilt_experience_diagnostics = {}
+    if settings.get("deterministic_project_bullets", False) and "EXPERIENCE" in DETERMINISTIC_SECTIONS:
+        try:
+            candidate_section, candidate_diagnostics = _build_deterministic_experience_section(
+                refs["context_bank"],
+                jd_keywords,
+            )
+            if candidate_section and "\\section{Experience}" in candidate_section:
+                deterministic_experience_ready = True
+                prebuilt_experience_section = candidate_section
+                prebuilt_experience_diagnostics = candidate_diagnostics
+        except Exception as exc:
+            print(
+                f"[TAILOR] Deterministic Experience prebuild unavailable; using LLM rewrite path. Error: {exc}")
+
+    job["experience_deterministic_ready"] = deterministic_experience_ready
+
     # Step 1: Generate Tailored Content via LLM service
     t0 = time.perf_counter()
     content = generate_tailored_content(
@@ -288,6 +488,7 @@ def run_tailor(job: dict) -> dict:
         context_bank=refs["context_bank"],
         strategy=job.get("strategy", "full_rewrite"),
         keywords=jd_keywords,
+        skip_experience_rewrite=deterministic_experience_ready,
     )
     content = _sanitize_tailored_content(content)
     timings["llm_content_generation"] = round(time.perf_counter() - t0, 3)
@@ -300,7 +501,8 @@ def run_tailor(job: dict) -> dict:
         strategy=job.get("strategy", "full_rewrite"),
         keywords=jd_keywords,
     )
-    timings["project_ranking_and_generation"] = round(time.perf_counter() - t0, 3)
+    timings["project_ranking_and_generation"] = round(
+        time.perf_counter() - t0, 3)
 
     # Step 2: Inject Content into LaTeX template
     t0 = time.perf_counter()
@@ -324,12 +526,23 @@ def run_tailor(job: dict) -> dict:
             job["deterministic_rewrite_fallbacks"] = fallback_events
 
         if "EXPERIENCE" in DETERMINISTIC_SECTIONS:
-            exp_section_tex, exp_diagnostics = _build_deterministic_experience_section(
-                refs["context_bank"],
-                jd_keywords,
-            )
-            tex_str = _replace_experience_section(tex_str, exp_section_tex)
-            job["experience_deterministic_ranking"] = exp_diagnostics
+            if deterministic_experience_ready and prebuilt_experience_section:
+                tex_str = _replace_experience_section(
+                    tex_str, prebuilt_experience_section)
+                job["experience_deterministic_ranking"] = prebuilt_experience_diagnostics
+                job["experience_deterministic_applied"] = True
+            else:
+                exp_section_tex, exp_diagnostics = _build_deterministic_experience_section(
+                    refs["context_bank"],
+                    jd_keywords,
+                )
+                if exp_section_tex and "\\section{Experience}" in exp_section_tex:
+                    tex_str = _replace_experience_section(
+                        tex_str, exp_section_tex)
+                    job["experience_deterministic_ranking"] = exp_diagnostics
+                    job["experience_deterministic_applied"] = True
+                else:
+                    job["experience_deterministic_applied"] = False
     timings["deterministic_rewrites"] = round(time.perf_counter() - t0, 3)
 
     # Persist diagnostics for reproducibility/debugging.
@@ -351,12 +564,102 @@ def run_tailor(job: dict) -> dict:
 
     # Phase 1 validation: warn_only mode. Preserve output and persist warnings.
     t0 = time.perf_counter()
-    validation_warnings = _validate_generated_resume_artifacts(
+    pre_repair_warnings = _validate_generated_resume_artifacts(
         target_dir, refs["context_bank"]
     )
     timings["validation"] = round(time.perf_counter() - t0, 3)
 
-    timings["total_pipeline"] = round(time.perf_counter() - t_pipeline_start, 3)
+    validation_warnings = list(pre_repair_warnings)
+    repair_classification = _classify_validation_warnings(pre_repair_warnings)
+    repair_applied = False
+
+    if pre_repair_warnings:
+        repaired_tex = tex_str
+        pre_repair_tex = tex_str
+        fixable_categories = set(repair_classification["fixable"])
+        hard_categories = set(repair_classification["hard"])
+        warning_map = _sectioned_bullet_index(pre_repair_tex)
+        hard_warning_entries = _hard_warning_entries(
+            pre_repair_warnings, warning_map)
+        if hard_warning_entries:
+            job["validation_warning_locations"] = hard_warning_entries
+
+        if "length" in fixable_categories:
+            repaired_tex = _trim_long_bullets_deterministically(repaired_tex)
+            repair_applied = True
+
+        if {"ownership", "action_verb"} & fixable_categories:
+            repaired_tex, fallback_events = _rewrite_weak_project_bullets_deterministically(
+                repaired_tex,
+                refs["base_resume_tex"],
+                refs["context_bank"],
+            )
+            job["deterministic_rewrite_fallbacks_after_validation"] = fallback_events
+            repair_applied = True
+
+            if settings.get("deterministic_project_bullets", False) and "EXPERIENCE" in DETERMINISTIC_SECTIONS:
+                exp_section_tex, exp_diagnostics = _build_deterministic_experience_section(
+                    refs["context_bank"],
+                    jd_keywords,
+                )
+                if exp_section_tex and "\\section{Experience}" in exp_section_tex:
+                    repaired_tex = _replace_experience_section(
+                        repaired_tex, exp_section_tex)
+                    job["experience_deterministic_ranking_after_validation"] = exp_diagnostics
+
+        if hard_categories:
+            if hard_warning_entries:
+                repaired_tex = _fallback_bullets_to_source(
+                    repaired_tex,
+                    refs["base_resume_tex"],
+                    hard_warning_entries,
+                )
+                repair_applied = True
+
+        if repair_applied:
+            repair_compile = _compile_latex_to_pdf(
+                tex_string=repaired_tex,
+                output_dir=target_dir,
+                filename=safe_name,
+                sections=sections,
+                tailored_content=content,
+                template_str=refs["base_resume_tex"],
+            )
+
+            if repair_compile.get("status") != "error":
+                attempted_post_warnings = _validate_generated_resume_artifacts(
+                    target_dir, refs["context_bank"]
+                )
+                pre_count = len(pre_repair_warnings)
+                post_count = len(attempted_post_warnings)
+
+                if post_count >= pre_count:
+                    print("[REPAIR] Reverted - repair increased warnings")
+                    revert_compile = _compile_latex_to_pdf(
+                        tex_string=pre_repair_tex,
+                        output_dir=target_dir,
+                        filename=safe_name,
+                        sections=sections,
+                        tailored_content=content,
+                        template_str=refs["base_resume_tex"],
+                    )
+                    if revert_compile.get("status") != "error":
+                        pdf_res = revert_compile
+                    validation_warnings = list(pre_repair_warnings)
+                    repair_applied = False
+                else:
+                    print(
+                        f"[REPAIR] Applied - warnings reduced {pre_count} -> {post_count}")
+                    pdf_res = repair_compile
+                    validation_warnings = attempted_post_warnings
+
+    job["validation_warnings_pre_repair"] = pre_repair_warnings
+    job["validation_warnings_post_repair"] = validation_warnings
+    job["validation_warning_classification"] = repair_classification
+    job["validation_repair_applied"] = repair_applied
+
+    timings["total_pipeline"] = round(
+        time.perf_counter() - t_pipeline_start, 3)
 
     # Persist timings and warnings into job_details.json
     job["validation_warnings"] = validation_warnings
@@ -368,7 +671,8 @@ def run_tailor(job: dict) -> dict:
         pdf_res["validation_warnings"] = validation_warnings
 
     pdf_res["tailor_timings"] = timings
-    print(f"[TAILOR] Timings for {job.get('company', '?')} - {job.get('title', '?')}:")
+    print(
+        f"[TAILOR] Timings for {job.get('company', '?')} - {job.get('title', '?')}:")
     for step, secs in timings.items():
         print(f"  {step}: {secs}s")
 

@@ -2,8 +2,27 @@ import json
 import re
 from pathlib import Path
 from typing import Any
-from backend.services.llm_client import get_tailor_client
+from backend.services.llm_client import get_tailor_client, get_settings
 from backend.utils.latex_parser import escape_latex_text
+from backend.utils.latex_utils import _extract_bitem_payloads, _visible_text_from_latex
+
+
+_NOUN_STOPWORDS = {
+    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into",
+    "is", "it", "of", "on", "or", "that", "the", "to", "with", "without", "via",
+    "using", "while", "through", "across", "over", "under", "within", "this", "these",
+    "those", "their", "its", "our", "your", "my", "his", "her", "was", "were", "has",
+    "have", "had", "can", "could", "will", "would", "should", "may", "might", "must",
+}
+
+_NOUN_VERB_EXCLUSIONS = {
+    "architected", "automated", "built", "created", "debugged", "delivered", "deployed",
+    "designed", "developed", "diagnosed", "drove", "enabled", "engineered", "established",
+    "implemented", "improved", "integrated", "launched", "led", "maintained", "optimized",
+    "orchestrated", "owned", "profiled", "reduced", "refactored", "scaled", "shipped",
+    "streamlined", "validated", "wrote", "build", "develop", "design", "implement", "lead",
+    "maintain", "optimize", "integrate", "ship", "improve", "reduce", "create", "deliver",
+}
 
 
 def sanitize_llm_latex(raw: str) -> str:
@@ -102,6 +121,166 @@ def _tokenize(text: str) -> set[str]:
     return set(re.findall(r"[a-zA-Z][a-zA-Z0-9+#._-]{1,}", text.lower()))
 
 
+def _extract_candidate_noun_terms(text: str) -> set[str]:
+    payloads = _extract_bitem_payloads(text)
+    source_text = "\n".join(payloads) if payloads else text
+    visible = _visible_text_from_latex(source_text)
+    terms = set()
+    for token in _tokenize(visible):
+        if token in _NOUN_STOPWORDS or token in _NOUN_VERB_EXCLUSIONS:
+            continue
+        if len(token) <= 2:
+            continue
+        if token.isdigit():
+            continue
+        terms.add(token)
+    return terms
+
+
+def _collect_project_fact_strings(project: dict) -> list[str]:
+    values = [
+        str(project.get("name", "")),
+        str(project.get("tools_used", "")),
+        str(project.get("what_does_it_do", "")),
+        str(project.get("summary", "")),
+    ]
+
+    stack = project.get("stack", [])
+    if isinstance(stack, list):
+        values.extend(str(item) for item in stack)
+    elif isinstance(stack, str):
+        values.append(stack)
+
+    for payload in _project_bullet_payloads(project):
+        values.extend([
+            str(payload.get("what_did_you_build", "")),
+            str(payload.get("tools_used", "")),
+            str(payload.get("how_it_works", "")),
+            str(payload.get("metric", "")),
+        ])
+
+    achievements = project.get("achievement", [])
+    if isinstance(achievements, dict):
+        achievements = [achievements]
+    if isinstance(achievements, list):
+        for entry in achievements:
+            if not isinstance(entry, dict):
+                continue
+            values.extend([
+                str(entry.get("verb", "")),
+                str(entry.get("what", "")),
+                str(entry.get("tool", "")),
+                str(entry.get("metric", "")),
+                str(entry.get("outcome", "")),
+                str(entry.get("narrative", "")),
+            ])
+
+    return [value for value in values if value]
+
+
+def _collect_experience_fact_strings(exp: dict) -> list[str]:
+    values = [
+        str(exp.get("company", "")),
+        str(exp.get("role", "")),
+        str(exp.get("dates", "")),
+        str(exp.get("location", "")),
+    ]
+
+    achievements = exp.get("achievement", [])
+    if isinstance(achievements, dict):
+        achievements = [achievements]
+    if isinstance(achievements, list):
+        for entry in achievements:
+            if not isinstance(entry, dict):
+                continue
+            values.extend([
+                str(entry.get("verb", "")),
+                str(entry.get("what", "")),
+                str(entry.get("tool", "")),
+                str(entry.get("metric", "")),
+                str(entry.get("outcome", "")),
+                str(entry.get("narrative", "")),
+            ])
+
+    for key, value in exp.items():
+        if not key.startswith("project_"):
+            continue
+        entries = value if isinstance(value, list) else [value]
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            values.extend([
+                str(item.get("your_specific_role", "")),
+                str(item.get("what_did_you_build", "")),
+                str(item.get("tools_used", "")),
+                str(item.get("metric", "")),
+                str(item.get("how_it_works", "")),
+                str(item.get("what_problem_it_solved", "")),
+                str(item.get("after_your_work", "")),
+            ])
+
+    return [value for value in values if value]
+
+
+def _resolve_section_allowed_nouns(section_name: str, context_bank: dict) -> set[str]:
+    section_upper = section_name.upper()
+
+    if section_upper.startswith("PROJECTS:"):
+        hint = section_name.split(":", 1)[1].strip().lower()
+        for project in context_bank.get("project", []):
+            name = str(project.get("name", "")).strip()
+            if not name:
+                continue
+            name_lower = name.lower()
+            if hint in name_lower or name_lower in hint:
+                combined = "\n".join(_collect_project_fact_strings(project))
+                return _extract_candidate_noun_terms(combined)
+
+    if section_upper.startswith("EXPERIENCE:"):
+        hint = section_name.split(":", 1)[1].strip().lower()
+        for exp in context_bank.get("experience", []):
+            company = str(exp.get("company", "")).strip().lower()
+            role = str(exp.get("role", "")).strip().lower()
+            if (company and (hint in company or company in hint)) or (role and (hint in role or role in hint)):
+                combined = "\n".join(_collect_experience_fact_strings(exp))
+                return _extract_candidate_noun_terms(combined)
+
+    return set()
+
+
+def _light_keyword_weave_preserved(original_text: str, rewritten_text: str, min_overlap: float = 0.55) -> bool:
+    original_payloads = _extract_bitem_payloads(original_text)
+    rewritten_payloads = _extract_bitem_payloads(rewritten_text)
+
+    if original_payloads and rewritten_payloads and len(original_payloads) != len(rewritten_payloads):
+        return False
+
+    if not original_payloads:
+        original_payloads = [original_text]
+    if not rewritten_payloads:
+        rewritten_payloads = [rewritten_text]
+
+    for original_payload, rewritten_payload in zip(original_payloads, rewritten_payloads):
+        original_tokens = {
+            token for token in _tokenize(_visible_text_from_latex(original_payload))
+            if token not in _NOUN_STOPWORDS
+        }
+        rewritten_tokens = {
+            token for token in _tokenize(_visible_text_from_latex(rewritten_payload))
+            if token not in _NOUN_STOPWORDS
+        }
+
+        if not original_tokens:
+            continue
+
+        overlap_ratio = len(
+            original_tokens & rewritten_tokens) / len(original_tokens)
+        if overlap_ratio < min_overlap:
+            return False
+
+    return True
+
+
 def _project_bullet_payloads(project: dict) -> list[dict]:
     bullets = []
     for key in sorted([k for k in project.keys() if k.startswith("bullet_")]):
@@ -135,14 +314,49 @@ def _project_bullet_payloads(project: dict) -> list[dict]:
     return bullets
 
 
-def _project_tools_string(project: dict) -> str:
+def _project_tools_string(
+    project: dict,
+    keywords: dict | None = None,
+    max_tools: int = 6,
+) -> str:
     tools_used = str(project.get("tools_used", "")).strip()
     if tools_used:
         return tools_used
 
     stack = project.get("stack", [])
     if isinstance(stack, list):
-        return ", ".join(str(item).strip() for item in stack if str(item).strip())
+        cleaned_stack = [str(item).strip()
+                         for item in stack if str(item).strip()]
+        if not cleaned_stack:
+            return ""
+
+        if not keywords:
+            return ", ".join(cleaned_stack[:max_tools])
+
+        keyword_values: list[str] = []
+        for key in ("required_skills", "required_tools", "domain_focus"):
+            raw = keywords.get(key, []) if isinstance(keywords, dict) else []
+            if isinstance(raw, list):
+                keyword_values.extend(str(v).strip()
+                                      for v in raw if str(v).strip())
+
+        jd_token_set = _tokenize(" ".join(keyword_values))
+        if not jd_token_set:
+            return ", ".join(cleaned_stack[:max_tools])
+
+        def _tool_rank(tool_name: str) -> tuple[int, int, str]:
+            tool_tokens = _tokenize(tool_name)
+            overlap = len(tool_tokens & jd_token_set)
+            return (overlap, len(tool_tokens), tool_name.lower())
+
+        ranked = sorted(cleaned_stack, key=_tool_rank, reverse=True)
+        selected = [tool for tool in ranked if _tool_rank(tool)[0] > 0]
+
+        # If JD has weak/indirect tool signals (e.g., some product roles), keep concise defaults.
+        if not selected:
+            selected = cleaned_stack
+
+        return ", ".join(selected[:max_tools])
 
     return str(stack).strip()
 
@@ -252,20 +466,24 @@ def rank_projects_for_jd(jd_text: str, context_bank: dict, keywords: dict = None
               for idx, project in enumerate(projects)]
     scored.sort(key=lambda item: (-item["score"], item["index"]))
 
-    i = 0
-    while i < len(scored):
-        j = i + 1
-        while j < len(scored) and abs(scored[j]["score"] - scored[i]["score"]) <= 0.10:
-            j += 1
-        if j - i > 1:
-            tied_group = scored[i:j]
-            tiebroken_names = _llm_tiebreak_order(jd_text, tied_group)
-            order_map = {name: pos for pos, name in enumerate(tiebroken_names)}
-            scored[i:j] = sorted(
-                tied_group,
-                key=lambda item: order_map.get(item["name"], 999),
-            )
-        i = j
+    settings = get_settings()
+    tiebreak_enabled = bool(settings.get("project_tiebreak_enabled", False))
+    if tiebreak_enabled:
+        i = 0
+        while i < len(scored):
+            j = i + 1
+            while j < len(scored) and abs(scored[j]["score"] - scored[i]["score"]) <= 0.10:
+                j += 1
+            if j - i > 1:
+                tied_group = scored[i:j]
+                tiebroken_names = _llm_tiebreak_order(jd_text, tied_group)
+                order_map = {name: pos for pos,
+                             name in enumerate(tiebroken_names)}
+                scored[i:j] = sorted(
+                    tied_group,
+                    key=lambda item: order_map.get(item["name"], 999),
+                )
+            i = j
 
     diagnostics = {
         "keywords": keywords,
@@ -388,7 +606,7 @@ def _apply_keyword_bolding_to_project_bullets(
 def build_ranked_projects_section(job_description: str, context_bank: dict, strategy: str = "full_rewrite", keywords: dict = None) -> tuple[str, dict]:
     ranked, diagnostics = rank_projects_for_jd(
         job_description, context_bank, keywords=keywords)
-    selected = ranked[:3]
+    selected = ranked[:4]
     diagnostics["selected_projects"] = [item["name"] for item in selected]
 
     blocks = []
@@ -413,7 +631,10 @@ def build_ranked_projects_section(job_description: str, context_bank: dict, stra
         )
 
         heading_name = escape_latex_text(str(project.get("name", "Project")))
-        heading_tools = escape_latex_text(_project_tools_string(project))
+        heading_tools = escape_latex_text(
+            _project_tools_string(
+                project, diagnostics["keywords"], max_tools=6)
+        )
         heading_date = escape_latex_text(
             str(project.get("dates") or project.get("date") or "")
         )
@@ -761,6 +982,11 @@ def rewrite_bullets_with_validation(section_name: str, current_text: str, keywor
     true_numbers = extract_numbers(context_notes) if context_notes else set()
     true_numbers.update(extract_numbers(current_text))
 
+    enforce_noun_guard = section_name.upper().startswith(
+        "PROJECTS") or section_name.upper().startswith("EXPERIENCE")
+    original_nouns = _extract_candidate_noun_terms(current_text)
+    allowed_nouns = _resolve_section_allowed_nouns(section_name, context_bank)
+
     for attempt in range(2):
         is_retry = attempt > 0
         output = rewrite_bullets(
@@ -775,6 +1001,26 @@ def rewrite_bullets_with_validation(section_name: str, current_text: str, keywor
                 continue
             else:
                 return current_text  # Fallback to original on double-fail
+
+        if section_name.upper().startswith("PROJECTS"):
+            if not _light_keyword_weave_preserved(current_text, output):
+                print(
+                    f"[GUARD] LLM rewrite exceeded light keyword weaving bounds in section '{section_name}'"
+                )
+                return current_text
+
+        if enforce_noun_guard:
+            output_nouns = _extract_candidate_noun_terms(output)
+            introduced_nouns = output_nouns - original_nouns
+            disallowed_nouns = sorted(
+                noun for noun in introduced_nouns if noun not in allowed_nouns
+            )
+            if disallowed_nouns:
+                print(
+                    f"[GUARD] LLM introduced disallowed noun(s) {disallowed_nouns} in section '{section_name}'"
+                )
+                return current_text
+
         return output
     return current_text
 
@@ -814,7 +1060,7 @@ Rules:
     return sanitize_llm_latex(resp.choices[0].message.content.strip())
 
 
-def generate_tailored_content(job_description: str, sections: dict, context_bank: dict, strategy: str = "full_rewrite", keywords: dict = None) -> dict:
+def generate_tailored_content(job_description: str, sections: dict, context_bank: dict, strategy: str = "full_rewrite", keywords: dict = None, skip_experience_rewrite: bool = False) -> dict:
     """
     The orchestrator for section-by-section content generation.
     Decides based on section name which rewriter (Skills vs Bullets) to use.
@@ -855,11 +1101,17 @@ def generate_tailored_content(job_description: str, sections: dict, context_bank
             )
             continue
 
-        # Projects / Experience → bullet keyword weaving
-        if "PROJECTS" in sec_upper or "EXPERIENCE" in sec_upper:
-            if strategy == "skills_only":
+        # Projects are rebuilt later via build_ranked_projects_section(), so skip
+        # LLM rewrites here to avoid redundant token spend and conflicting text.
+        if "PROJECTS" in sec_upper:
+            rewritten[section_name] = sec_data["content"]
+            continue
+
+        # Experience -> bullet keyword weaving
+        if "EXPERIENCE" in sec_upper:
+            if strategy == "skills_only" or skip_experience_rewrite:
                 print(
-                    f"[GEN] Strategy: skills_only. Skipping rewrite for: {section_name}")
+                    f"[GEN] Skipping experience rewrite for: {section_name}")
                 rewritten[section_name] = sec_data["content"]
             else:
                 print(

@@ -2,6 +2,7 @@ from backend.services import resume_generators
 from backend.services.resume_generators import (
     build_ranked_projects_section,
     rank_projects_for_jd,
+    rewrite_bullets_with_validation,
 )
 
 
@@ -105,6 +106,18 @@ def test_build_ranked_projects_section_uses_dates_in_heading(monkeypatch):
                     }
                 ],
             },
+            {
+                "name": "TweetScape",
+                "tools_used": "Python, NLP",
+                "dates": "March 2024 -- May 2024",
+                "what_does_it_do": "Sentiment exploration toolkit.",
+                "bullet_1": [
+                    {
+                        "what_did_you_build": "A sentiment analysis workflow",
+                        "how_it_works": "Keyword extraction and polarity scoring",
+                    }
+                ],
+            },
         ]
     }
 
@@ -135,10 +148,12 @@ def test_build_ranked_projects_section_uses_dates_in_heading(monkeypatch):
     assert "{December 2025 -- Present}" in section_text
     assert "{June 2024 -- Present}" in section_text
     assert "{August 2024 -- November 2024}" in section_text
+    assert "{March 2024 -- May 2024}" in section_text
     assert diagnostics["selected_projects"] == [
         "Job Search Automation Tool",
         "Personal AI Agent",
         "WolfCafe+",
+        "TweetScape",
     ]
 
 
@@ -199,3 +214,119 @@ def test_build_ranked_projects_section_bolds_keywords(monkeypatch):
 
     assert r"\textbf{FastAPI}" in section_text
     assert r"\textbf{SQLite}" in section_text
+
+
+def test_rewrite_bullets_with_validation_rejects_new_project_nouns(monkeypatch):
+    context_bank = {
+        "project": [
+            {
+                "name": "Alpha Platform",
+                "tools_used": "Python, FastAPI",
+                "summary": "Analytics platform for hiring workflows",
+                "achievement": [
+                    {
+                        "verb": "Built",
+                        "what": "analytics dashboards",
+                        "tool": "Python + FastAPI",
+                        "metric": "20%",
+                        "outcome": "faster recruiter decisions",
+                    }
+                ],
+            }
+        ]
+    }
+
+    current_text = r"\bitem{Built analytics dashboards using Python, achieving 20\%.}"
+    rewritten_text = r"\bitem{Built mobile chatbots using Python, achieving 20\%.}"
+
+    monkeypatch.setattr(
+        resume_generators,
+        "rewrite_bullets",
+        lambda section_name, current_text, keywords, context_bank, is_retry=False: rewritten_text,
+    )
+
+    result = rewrite_bullets_with_validation(
+        section_name="PROJECTS: Alpha Platform",
+        current_text=current_text,
+        keywords={},
+        context_bank=context_bank,
+    )
+
+    assert result == current_text
+
+
+def test_rewrite_bullets_with_validation_rejects_new_experience_nouns(monkeypatch):
+    context_bank = {
+        "experience": [
+            {
+                "company": "Beta Corp",
+                "role": "Software Engineer Intern",
+                "achievement": [
+                    {
+                        "verb": "Developed",
+                        "what": "internal APIs",
+                        "tool": "Python + FastAPI",
+                        "metric": "120",
+                        "outcome": "reduced manual QA overhead",
+                    }
+                ],
+            }
+        ]
+    }
+
+    current_text = r"\bitem{Developed internal APIs using Python, achieving 120 req/sec.}"
+    rewritten_text = r"\bitem{Developed robotics controllers using Python, achieving 120 req/sec.}"
+
+    monkeypatch.setattr(
+        resume_generators,
+        "rewrite_bullets",
+        lambda section_name, current_text, keywords, context_bank, is_retry=False: rewritten_text,
+    )
+
+    result = rewrite_bullets_with_validation(
+        section_name="EXPERIENCE: Beta Corp",
+        current_text=current_text,
+        keywords={},
+        context_bank=context_bank,
+    )
+
+    assert result == current_text
+
+
+def test_rewrite_bullets_with_validation_rejects_aggressive_project_rewrite(monkeypatch):
+    context_bank = {
+        "project": [
+            {
+                "name": "Alpha Platform",
+                "tools_used": "Python, FastAPI",
+                "summary": "Analytics platform for hiring workflows and recruiter decisions",
+                "achievement": [
+                    {
+                        "verb": "Built",
+                        "what": "analytics dashboards",
+                        "tool": "Python + FastAPI",
+                        "metric": "20%",
+                        "outcome": "faster recruiter decisions",
+                    }
+                ],
+            }
+        ]
+    }
+
+    current_text = r"\bitem{Built analytics dashboards using Python, achieving 20\%.}"
+    rewritten_text = r"\bitem{Built hiring workflows for recruiter decisions with FastAPI platform, achieving 20\%.}"
+
+    monkeypatch.setattr(
+        resume_generators,
+        "rewrite_bullets",
+        lambda section_name, current_text, keywords, context_bank, is_retry=False: rewritten_text,
+    )
+
+    result = rewrite_bullets_with_validation(
+        section_name="PROJECTS: Alpha Platform",
+        current_text=current_text,
+        keywords={},
+        context_bank=context_bank,
+    )
+
+    assert result == current_text

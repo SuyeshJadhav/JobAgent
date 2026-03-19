@@ -6,25 +6,28 @@ from backend.services.llm_client import get_llm_client, get_model_name, get_sett
 
 def parse_llm_json_response(content: str) -> dict:
     """
-    Parses structured JSON from the LLM response. 
-    Includes robust fallback logic using regex if the JSON is malformed or 
+    Parses structured JSON from the LLM response.
+    Includes robust fallback logic using regex if the JSON is malformed or
     wrapped in markdown fences.
-    
+
     Args:
         content (str): Raw string content from the LLM.
-        
+
     Returns:
-        dict: {score: int, reasoning: str, company: str, title: str, strategy: str}
+        dict: {score: int, reasoning: str,
+            company: str, title: str, strategy: str}
     """
-    result = {"score": 0, "reasoning": "", "company": "", "title": "", "strategy": "skills_only"}
-    
+    result = {"score": 0, "reasoning": "", "company": "",
+              "title": "", "strategy": "skills_only"}
+
     # ── Try direct JSON parse ──
     try:
         # Strip markdown fences if present
-        cleaned = re.sub(r"^```(?:json)?\s*", "", content.strip(), flags=re.MULTILINE)
+        cleaned = re.sub(r"^```(?:json)?\s*", "",
+                         content.strip(), flags=re.MULTILINE)
         cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE)
         data = json.loads(cleaned)
-        result["score"] = max(0, min(10, int(data.get("score", 0))))
+        result["score"] = max(0, min(100, int(data.get("score", 0))))
         result["reasoning"] = str(data.get("reasoning", ""))
         result["company"] = str(data.get("company", "")).strip()
         result["title"] = str(data.get("title", "")).strip()
@@ -35,18 +38,20 @@ def parse_llm_json_response(content: str) -> dict:
 
     # ── Fallback: regex extraction ──
     score_match = re.search(r'"score"\s*:\s*(\d+)', content)
-    reason_match = re.search(r'"reasoning"\s*:\s*"([^"]*)"', content, re.DOTALL)
+    reason_match = re.search(
+        r'"reasoning"\s*:\s*"([^"]*)"', content, re.DOTALL)
     company_match = re.search(r'"company"\s*:\s*"([^"]*)"', content)
     title_match = re.search(r'"title"\s*:\s*"([^"]*)"', content)
 
     if score_match:
-        result["score"] = max(0, min(10, int(score_match.group(1))))
+        result["score"] = max(0, min(100, int(score_match.group(1))))
     else:
         # Last resort: find any number
-        fst = re.search(r"\b(\d{1,2})\b", content)
-        result["score"] = max(0, min(10, int(fst.group(1)))) if fst else 0
+        fst = re.search(r"\b(\d{1,3})\b", content)
+        result["score"] = max(0, min(100, int(fst.group(1)))) if fst else 0
 
-    result["reasoning"] = reason_match.group(1).strip() if reason_match else content.strip()[:300]
+    result["reasoning"] = reason_match.group(
+        1).strip() if reason_match else content.strip()[:300]
     result["company"] = company_match.group(1).strip() if company_match else ""
     result["title"] = title_match.group(1).strip() if title_match else ""
 
@@ -56,10 +61,10 @@ def parse_llm_json_response(content: str) -> dict:
 def _format_profile_summary(profile: dict) -> str:
     """
     Formats the candidate's profile data into a concise string for the LLM prompt.
-    
+
     Args:
         profile (dict): Parsed candidate profile data.
-        
+
     Returns:
         str: Formatted profile summary.
     """
@@ -69,15 +74,16 @@ Candidate Experience Level: {profile.get('experience_level', 'N/A')}
 Candidate Preferences: {profile.get('preferences', 'N/A')}
 Candidate Visa Status: Requires sponsorship (F-1 student, OPT/CPT or H1B)"""
 
+
 def _build_scoring_prompt(job: dict, profile: dict) -> tuple[str, str]:
     """
     Constructs the system and user prompts for the LLM scoring engine.
     Ensures the 'BASE-10 DEDUCTION RUBRIC' is clearly communicated.
-    
+
     Args:
         job (dict): Job record.
         profile (dict): Candidate profile.
-        
+
     Returns:
         tuple[str, str]: (system_prompt, user_prompt)
     """
@@ -176,24 +182,25 @@ Job Details:
 {job_summary}
 
 Apply the deduction rubric and return JSON."""
-    
+
     return system, user_msg
+
 
 def _execute_llm_scoring(system: str, user_msg: str) -> dict:
     """
-    Executes the LLM API call with robust error handling and model-specific 
+    Executes the LLM API call with robust error handling and model-specific
     compatibility logic (e.g., support for JSON mode).
-    
+
     Args:
         system (str): System prompt.
         user_msg (str): User prompt.
-        
+
     Returns:
         dict: {score, reasoning, company, title, strategy}
     """
     client = get_llm_client()
     model_name = get_model_name()
-    
+
     try:
         response = client.chat.completions.create(
             model=model_name,
@@ -224,14 +231,15 @@ def _execute_llm_scoring(system: str, user_msg: str) -> dict:
                 return {"score": 0, "reasoning": f"Error calling LLM: {str(e2)}", "company": "", "title": "", "strategy": "skills_only"}
         return {"score": 0, "reasoning": f"Error calling LLM: {str(e)}", "company": "", "title": "", "strategy": "skills_only"}
 
+
 def _llm_score(job: dict, profile: dict) -> dict:
     """
     Internal wrapper to orchestrate the prompt building and LLM execution.
-    
+
     Args:
         job (dict): Job record.
         profile (dict): Candidate profile.
-        
+
     Returns:
         dict: {score, reasoning, company, title, strategy}
     """
@@ -242,15 +250,16 @@ def _llm_score(job: dict, profile: dict) -> dict:
 def score_job(job: dict, profile: dict) -> dict:
     """
     Primary API to score a job for a candidate.
-    Combines fast local heuristic pre-checks (for known auto-rejects/caps) 
+    Combines fast local heuristic pre-checks (for known auto-rejects/caps)
     with a sophisticated LLM deduction rubric.
-    
+
     Args:
         job (dict): Job record.
         profile (dict): Candidate profile.
-        
+
     Returns:
-        dict: {score: int, reasoning: str, company: str, title: str, strategy: str}
+        dict: {score: int, reasoning: str,
+            company: str, title: str, strategy: str}
     """
     # ── Fast pre-check: known quant firms ──
     QUANT_FIRMS = {
@@ -263,11 +272,18 @@ def score_job(job: dict, profile: dict) -> dict:
 
     company_lower = job.get("company", "").lower()
     if any(firm in company_lower for firm in QUANT_FIRMS):
-        return {"score": 2, "reasoning": "[PRE-CHECK] Quant firm — auto-capped at 2.", "company": "", "title": "", "strategy": "skills_only"}
+        return {
+            "score": 20,
+            "reasoning": "[PRE-CHECK] Quant firm — auto-capped at 20.",
+            "company": "",
+            "title": "",
+            "strategy": "skills_only",
+        }
 
     # ── Fast pre-check: seniority in title ──
     title_lower = job.get("title", "").lower()
-    SENIOR_SIGNALS = ["senior", "staff", "principal", "lead", "manager", "director", "vp ", "head of"]
+    SENIOR_SIGNALS = ["senior", "staff", "principal",
+                      "lead", "manager", "director", "vp ", "head of"]
     if any(sig in title_lower for sig in SENIOR_SIGNALS):
         # Exception: "Senior Intern" is fine (some companies use that)
         if "intern" not in title_lower:
@@ -278,7 +294,7 @@ def score_job(job: dict, profile: dict) -> dict:
 
     # ── Post-adjustment: sponsorship bonus ──
     if job.get("is_sponsored") and get_settings().get("visa_status") == "prefer_sponsorship":
-        result["score"] = min(10, result["score"] + 1)
+        result["score"] = min(100, result["score"] + 10)
         result["reasoning"] = "[SPONSORED] " + result["reasoning"]
 
     return result
@@ -298,8 +314,7 @@ if __name__ == "__main__":
         "preferences": "AI/ML focus, remote or relocated"
     }
     result = score_job(test_job, test_profile)
-    print(f"Score: {result['score']}/10")
+    print(f"Score: {result['score']}/100")
     print(f"Reason: {result['reasoning']}")
     print(f"Company: {result['company']}")
     print(f"Title: {result['title']}")
-

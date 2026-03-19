@@ -58,7 +58,7 @@ dates   = "December 2023 – February 2024"
 
 [[project]]
 name       = "TweetScape"
-stack      = ["React 19", "FastAPI", "D3.js", "Transformers", "SQLite", "UMAP", "SentenceTransformers", "RoBERTa", "DistilRoBERTa", "KeyBERT", "TF-IDF", "Playwright", "Ollama", "Gemma"]
+stack      = ["React 19", "FastAPI", "D3.js", "SQLite", "Ollama", "Gemma"]
 github_link = "https://github.com/SuyeshJadhav/tweetscape"
 dates      = "December 2025 – January 2026"
 summary    = "Full-stack social media analytics platform processing tweets through a 10-stage NLP pipeline with interactive D3.js visualization."
@@ -183,7 +183,7 @@ summary    = "Full-stack café ordering platform with real-time group ordering, 
 
 [[project]]
 name       = "Academic Integrity Platform"
-stack      = ["Python", "FastAPI", "Next.js 14", "PyTorch", "MongoDB", "RoBERTa", "DetectGPT", "TF-IDF", "asyncio", "arXiv API"]
+stack      = ["FastAPI", "Next.js 14", "PyTorch", "RoBERTa", "DetectGPT", "TF-IDF", "arXiv API"]
 github_link = "https://github.com/SuyeshJadhav/plagiarism-detection"
 dates      = "January 2025 – March 2025"
 summary    = "Async plagiarism detection platform with dual-model ensemble, hybrid lexical-semantic scoring, and automated source extraction."
@@ -222,7 +222,7 @@ summary    = "Async plagiarism detection platform with dual-model ensemble, hybr
 
 [[project]]
 name       = "AI Resume Tailoring Engine"
-stack      = ["Python", "FastAPI", "SQLite", "Ollama", "JavaScript", "pytest", "asyncio", "pdflatex"]
+stack      = ["FastAPI", "SQLite", "Ollama", "Groq", "pytest", "pdflatex"]
 github_link = "https://github.com/SuyeshJadhav/JobAgent"
 dates      = "February 2026 – March 2026"
 summary    = "Backend-first job search automation system with multi-source ingestion, guardrailed LLM scoring, and deterministic resume generation."

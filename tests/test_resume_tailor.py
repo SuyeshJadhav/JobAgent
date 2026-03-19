@@ -193,6 +193,7 @@ def test_validate_generated_resume_artifacts_warns_on_rule_violations(tmp_path):
     assert any("[numbers]" in warning for warning in warnings)
     assert any("[tools]" in warning for warning in warnings)
     assert any("[length]" in warning for warning in warnings)
+    # nouns validator removed — false positives on common English words
 
 # Task 4 — Test the Orchestrator Pipeline
 
@@ -277,8 +278,11 @@ def test_run_tailor_pipeline(
     assert "improving research" not in compile_content["EXPERIENCE: TestCompany"].lower(
     )
 
-    assert result == {
-        "status": "success",
-        "output_dir": str(tmp_path / "TestCompany-Software_Engineer-2026-03-04"),
-        "pdf_path": str(tmp_path / "TestCompany-Software_Engineer-2026-03-04" / "resume.pdf"),
-    }
+    assert result["status"] == "success"
+    assert result["output_dir"] == str(
+        tmp_path / "TestCompany-Software_Engineer-2026-03-04"
+    )
+    assert result["pdf_path"] == str(
+        tmp_path / "TestCompany-Software_Engineer-2026-03-04" / "resume.pdf"
+    )
+    assert "tailor_timings" in result

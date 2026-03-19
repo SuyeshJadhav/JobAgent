@@ -10,16 +10,41 @@ from pydantic import BaseModel
 
 from backend.services.db_tracker import get_jobs, load_job_details, update_job
 from backend.services.llm_client import get_llm_client, get_model_name, get_settings
+from backend.services.threshold_policy import (
+    normalize_score_to_percent,
+    resolve_score_threshold,
+    threshold_rejection_detail,
+)
 from backend.utils.profile_loader import load_profile_file
 from backend.utils.url_matcher import find_job_by_url
 
 router = APIRouter(prefix="/api/sniper", tags=["sniper"])
+PROFILE_DIR = Path(__file__).parent.parent.parent / "profile"
 
 
 class AnswerRequest(BaseModel):
     url: Optional[str] = None
     job_id: Optional[str] = None
     questions: list[str]
+
+
+def _enforce_threshold_if_scored(job: dict):
+    score_value = job.get("score")
+    if score_value is None:
+        return
+
+    settings = get_settings()
+    threshold = resolve_score_threshold(settings)
+    score = normalize_score_to_percent(score_value)
+    if score < threshold:
+        raise HTTPException(
+            status_code=400,
+            detail=threshold_rejection_detail(
+                score,
+                threshold,
+                "Job score below threshold",
+            ),
+        )
 
 
 @router.post("/answer")
@@ -42,6 +67,7 @@ def get_sniper_answers(payload: AnswerRequest):
         details = load_job_details(job_id)
         if details and "description" in details:
             job_context = details["description"]
+        _enforce_threshold_if_scored(matched_job)
 
     # 2. Get User Context
     profile_sections = []
@@ -118,8 +144,9 @@ def get_sniper_answers(payload: AnswerRequest):
         if matched_job:
             try:
                 settings = get_settings()
-                threshold = int(settings.get("score_threshold", 6))
-                score = int(matched_job.get("score", 0))
+                threshold = resolve_score_threshold(settings)
+                score = normalize_score_to_percent(
+                    matched_job.get("score", 0))
                 job_id = matched_job["job_id"]
 
                 pdf_path = None
@@ -137,10 +164,12 @@ def get_sniper_answers(payload: AnswerRequest):
                                 if pdf_files:
                                     pdf_path = pdf_files[0]
                                     break
-                    # Load default resume
-                    default_path = PROFILE_DIR / "resume.pdf"
-                    if default_path.exists():
-                        pdf_path = default_path
+
+                    # Load default resume only as fallback when no tailored PDF was found.
+                    if not pdf_path:
+                        default_path = PROFILE_DIR / "resume.pdf"
+                        if default_path.exists():
+                            pdf_path = default_path
 
                 if pdf_path and pdf_path.exists():
                     with open(pdf_path, "rb") as pdf_file:

@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 from backend.services.jd_scraper import scrape_full_jd
-from backend.utils.text_cleaner import trim_jd_text, contains_bad_title, contains_dealbreakers, is_auto_shortlist_title, is_target_location, is_garbage_metadata
+from backend.utils.text_cleaner import trim_jd_text, contains_bad_title, contains_dealbreakers, is_target_location, is_garbage_metadata
 from backend.services.scorer import score_job
 from backend.services.db_tracker import (
     add_job, get_job_by_id,
@@ -25,10 +25,32 @@ class ScoutProcessor:
 
     def __init__(self):
         self.settings = get_settings()
-        self.threshold = int(self.settings.get("score_threshold", 6))
+        self.threshold = self._resolve_score_threshold(self.settings)
         self.profile_path = Path(
             __file__).parent.parent.parent / "references" / "candidate_profile.md"
         self._profile = None
+
+    @staticmethod
+    def _resolve_score_threshold(settings: dict) -> int:
+        """
+        Resolve shortlist threshold on a 0-100 scale.
+        Backward compatibility: if old 0-10 value is configured, scale it to percent.
+        """
+        raw = settings.get("resume_match_threshold")
+        if raw is None:
+            system_cfg = settings.get("system", {}) if isinstance(
+                settings.get("system", {}), dict) else {}
+            raw = settings.get("score_threshold",
+                               system_cfg.get("score_threshold", 80))
+
+        try:
+            val = int(raw)
+        except (TypeError, ValueError):
+            return 80
+
+        if 0 <= val <= 10:
+            return val * 10
+        return max(0, min(100, val))
 
     @property
     def profile(self):
@@ -87,37 +109,30 @@ class ScoutProcessor:
                     jd_text = trim_jd_text(jd_text)
                     job['description'] = jd_text
 
-                    # Check for VIP Auto-Shortlist Override (e.g. Intern roles)
-                    is_vip = is_auto_shortlist_title(job.get('title'))
+                    # Gate 4: Dealbreaker evaluation (e.g. No TS/SCI)
+                    db_match = contains_dealbreakers(jd_text)
+                    if db_match:
+                        reason = f"Rejected: Found dealbreaker terms in JD ({db_match})"
+                        update_job(
+                            job["job_id"], status="rejected", score=0, reason=reason)
+                        print(
+                            f"[SKIP] {job.get('title')} - {job.get('company')} (Dealbreaker: {db_match})")
+                        return
 
-                    if is_vip:
-                        score = 10
-                        reason = "Auto-Shortlisted (Protected Title)"
-                    else:
-                        # Gate 4: Dealbreaker evaluation (e.g. No TS/SCI)
-                        db_match = contains_dealbreakers(jd_text)
-                        if db_match:
-                            reason = f"Rejected: Found dealbreaker terms in JD ({db_match})"
-                            update_job(
-                                job["job_id"], status="rejected", score=1, reason=reason)
-                            print(
-                                f"[SKIP] {job.get('title')} - {job.get('company')} (Dealbreaker: {db_match})")
-                            return
+                    # Gate 5: LLM Scoring
+                    result = score_job(job, self.profile)
+                    score, reason = result["score"], result["reasoning"]
 
-                        # Gate 5: LLM Scoring
-                        result = score_job(job, self.profile)
-                        score, reason = result["score"], result["reasoning"]
-
-                        # Fix garbage metadata using LLM-extracted values
-                        if is_garbage_metadata(job.get("company", ""), job.get("title", "")):
-                            if result.get("company"):
-                                job["company"] = result["company"]
-                            if result.get("title"):
-                                job["title"] = result["title"]
-                            update_job(
-                                job["job_id"], company=job["company"], title=job["title"])
-                            print(
-                                f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
+                    # Fix garbage metadata using LLM-extracted values
+                    if is_garbage_metadata(job.get("company", ""), job.get("title", "")):
+                        if result.get("company"):
+                            job["company"] = result["company"]
+                        if result.get("title"):
+                            job["title"] = result["title"]
+                        update_job(
+                            job["job_id"], company=job["company"], title=job["title"])
+                        print(
+                            f"[FIX]  Corrected metadata → {job['company']} - {job['title']}")
 
                     job["score"] = score
                     job["reason"] = reason
@@ -128,13 +143,13 @@ class ScoutProcessor:
                         update_job(
                             job["job_id"], status="shortlisted", score=score, reason=reason)
                         print(
-                            f"[WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+                            f"[WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/100)")
                     else:
                         job["status"] = "rejected"
                         update_job(job["job_id"], status="rejected",
                                    score=score, reason=reason)
                         print(
-                            f"[REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+                            f"[REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/100)")
 
                     # Always save details to allow manual tailoring overrides
                     save_job_details(job)
@@ -228,12 +243,12 @@ class ScoutProcessor:
             update_job(job_id, status="shortlisted",
                        score=score, reason=reason)
             print(
-                f"[ORGANIC WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+                f"[ORGANIC WIN]  {job.get('title')} - {job.get('company')} (Score: {score}/100)")
         else:
             job["status"] = "rejected"
             update_job(job_id, status="rejected", score=score, reason=reason)
             print(
-                f"[ORGANIC REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/10)")
+                f"[ORGANIC REJ]  {job.get('title')} - {job.get('company')} (Score: {score}/100)")
 
         # Always save details to allow manual tailoring overrides
         save_job_details(job)
@@ -244,5 +259,5 @@ class ScoutProcessor:
             "score": score,
             "reason": reason,
             "job_status": job["status"],
-            "message": f"Job scored {score}/10 — {'shortlisted' if score >= self.threshold else 'rejected'}."
+            "message": f"Job scored {score}/100 — {'shortlisted' if score >= self.threshold else 'rejected'}."
         }
