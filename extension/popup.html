@@ -3,64 +3,295 @@
 <head>
 	<meta charset="utf-8">
 	<style>
-		body {
-			width: 260px;
+		* {
 			margin: 0;
-			padding: 14px 12px;
-			background: #1e1b2e;
-			color: #fff;
-			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-			overflow: hidden;
+			padding: 0;
+			box-sizing: border-box;
 		}
-		#jobagent-fam-badge {
-			font-size: 11px;
-			color: #a5b4fc;
-			text-align: center;
-			padding: 2px 0 4px 0;
-			letter-spacing: 0.5px;
-			border-bottom: 1px solid rgba(255,255,255,0.08);
-			margin-bottom: 8px;
-			font-weight: 500;
+		body {
+			width: 320px;
+			background: #0f0f14;
+			color: #e4e4e7;
+			font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+			font-size: 13px;
+			overflow-y: auto;
+			max-height: 520px;
 		}
-		#jobagent-fam-actions {
+
+		/* ── Header ── */
+		.header {
 			display: flex;
-			flex-direction: column;
+			align-items: center;
+			justify-content: space-between;
+			padding: 14px 16px 10px;
+			border-bottom: 1px solid rgba(255,255,255,0.06);
+		}
+		.header-brand {
+			display: flex;
+			align-items: center;
 			gap: 8px;
 		}
-		button {
-			width: 100%;
-			border: none;
-			cursor: pointer;
-			padding: 10px 12px;
-			border-radius: 8px;
-			font-size: 13px;
-			font-weight: 600;
-			color: #fff;
-			transition: transform 0.15s ease, box-shadow 0.15s ease;
-			font-family: inherit;
-			letter-spacing: 0.2px;
-			box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-		}
-		button:hover:not(:disabled) {
-			transform: translateY(-1px);
-		}
-		button:disabled {
-			cursor: default;
-			opacity: 0.8;
-		}
-		#loading {
-			text-align: center;
-			color: #a5b4fc;
+		.header-brand .logo {
+			width: 22px;
+			height: 22px;
+			background: linear-gradient(135deg, #22c55e, #10b981);
+			border-radius: 6px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
 			font-size: 12px;
-			margin: 10px 0;
+			font-weight: 800;
+			color: #000;
 		}
+		.header-brand span {
+			font-size: 15px;
+			font-weight: 700;
+			color: #fff;
+			letter-spacing: -0.3px;
+		}
+		.header-status {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			font-size: 11px;
+			color: #71717a;
+		}
+		.status-dot {
+			width: 7px;
+			height: 7px;
+			border-radius: 50%;
+			background: #71717a;
+			transition: background 0.3s ease;
+		}
+		.status-dot.connected { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+		.status-dot.error { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+		.status-dot.checking { background: #eab308; animation: pulse 1s ease-in-out infinite; }
+
+		@keyframes pulse {
+			0%, 100% { opacity: 1; }
+			50% { opacity: 0.4; }
+		}
+
+		/* ── Section ── */
+		.section {
+			padding: 12px 16px;
+			border-bottom: 1px solid rgba(255,255,255,0.04);
+		}
+		.section-title {
+			font-size: 10px;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.8px;
+			color: #71717a;
+			margin-bottom: 8px;
+		}
+
+		/* ── Select / Input ── */
+		.field {
+			margin-bottom: 10px;
+		}
+		.field:last-child {
+			margin-bottom: 0;
+		}
+		.field label {
+			display: block;
+			font-size: 11px;
+			color: #a1a1aa;
+			margin-bottom: 4px;
+			font-weight: 500;
+		}
+		.field select, .field input {
+			width: 100%;
+			padding: 8px 10px;
+			background: #1a1a24;
+			border: 1px solid rgba(255,255,255,0.08);
+			border-radius: 6px;
+			color: #e4e4e7;
+			font-size: 12px;
+			font-family: inherit;
+			outline: none;
+			transition: border-color 0.2s ease;
+		}
+		.field select:hover, .field input:hover {
+			border-color: rgba(255,255,255,0.15);
+		}
+		.field select:focus, .field input:focus {
+			border-color: #22c55e;
+			box-shadow: 0 0 0 2px rgba(34,197,94,0.1);
+		}
+		.field select {
+			cursor: pointer;
+			appearance: none;
+			background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%2371717a' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10z'/%3E%3C/svg%3E");
+			background-repeat: no-repeat;
+			background-position: right 10px center;
+			padding-right: 28px;
+		}
+
+		/* ── API Key ── */
+		.api-key-row {
+			display: flex;
+			gap: 6px;
+		}
+		.api-key-row input {
+			flex: 1;
+			font-family: 'Consolas', 'Courier New', monospace;
+			font-size: 11px;
+			letter-spacing: 0.5px;
+		}
+		.api-key-row button {
+			padding: 6px 10px;
+			background: #1a1a24;
+			border: 1px solid rgba(255,255,255,0.08);
+			border-radius: 6px;
+			color: #a1a1aa;
+			cursor: pointer;
+			font-size: 12px;
+			transition: all 0.15s ease;
+			white-space: nowrap;
+		}
+		.api-key-row button:hover {
+			background: #22c55e;
+			color: #000;
+			border-color: #22c55e;
+		}
+
+		/* ── Connection Banner ── */
+		.conn-banner {
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			padding: 8px 12px;
+			border-radius: 6px;
+			font-size: 11px;
+			font-weight: 500;
+		}
+		.conn-banner.ok {
+			background: rgba(34,197,94,0.08);
+			color: #4ade80;
+			border: 1px solid rgba(34,197,94,0.15);
+		}
+		.conn-banner.err {
+			background: rgba(239,68,68,0.08);
+			color: #f87171;
+			border: 1px solid rgba(239,68,68,0.15);
+		}
+		.conn-banner.loading {
+			background: rgba(234,179,8,0.08);
+			color: #fbbf24;
+			border: 1px solid rgba(234,179,8,0.12);
+		}
+
+		/* ── Quick Actions ── */
+		.quick-btn {
+			width: 100%;
+			padding: 10px 14px;
+			background: #1a1a24;
+			border: 1px solid rgba(255,255,255,0.06);
+			border-radius: 8px;
+			color: #e4e4e7;
+			font-size: 13px;
+			font-weight: 500;
+			cursor: pointer;
+			transition: all 0.15s ease;
+			display: flex;
+			align-items: center;
+			gap: 8px;
+			font-family: inherit;
+			margin-bottom: 6px;
+		}
+		.quick-btn:last-child { margin-bottom: 0; }
+		.quick-btn:hover {
+			background: rgba(34,197,94,0.08);
+			border-color: rgba(34,197,94,0.2);
+			color: #4ade80;
+		}
+
+		/* ── Footer ── */
+		.footer {
+			padding: 10px 16px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			font-size: 10px;
+			color: #52525b;
+		}
+		.footer a {
+			color: #71717a;
+			text-decoration: none;
+		}
+		.footer a:hover { color: #a1a1aa; }
+
+		/* ── Hidden ── */
+		.hidden { display: none !important; }
 	</style>
 </head>
 <body>
-	<div id="jobagent-fam-badge">JobAgent</div>
-	<div id="jobagent-fam-actions">
-		<div id="loading">Connecting to JobAgent...</div>
+	<!-- Header -->
+	<div class="header">
+		<div class="header-brand">
+			<div class="logo">JA</div>
+			<span>JobAgent</span>
+		</div>
+		<div class="header-status">
+			<div class="status-dot checking" id="status-dot"></div>
+			<span id="status-text">Checking...</span>
+		</div>
 	</div>
+
+	<!-- LLM Provider Section -->
+	<div class="section" id="provider-section">
+		<div class="section-title">LLM Provider</div>
+
+		<div class="field">
+			<label>Provider</label>
+			<select id="provider-select">
+				<option value="groq">☁️ Groq Cloud</option>
+				<option value="ollama">🖥️ Ollama (Local)</option>
+			</select>
+		</div>
+
+		<div class="field">
+			<label>Model</label>
+			<select id="model-select">
+				<option>Loading...</option>
+			</select>
+		</div>
+
+		<div class="field" id="api-key-field">
+			<label>API Key</label>
+			<div class="api-key-row">
+				<input type="password" id="api-key-input" placeholder="gsk_..." spellcheck="false" autocomplete="off">
+				<button id="api-key-save" title="Save key">Save</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Connection Status -->
+	<div class="section" id="conn-section">
+		<div class="conn-banner loading" id="conn-banner">
+			<span>⏳</span>
+			<span id="conn-text">Testing connection...</span>
+		</div>
+	</div>
+
+	<!-- Quick Actions -->
+	<div class="section">
+		<div class="section-title">Quick Actions</div>
+		<button class="quick-btn" id="btn-dashboard">
+			<span>📊</span> Open Dashboard
+		</button>
+		<button class="quick-btn" id="btn-test">
+			<span>🔌</span> Test Connection
+		</button>
+	</div>
+
+	<!-- Footer -->
+	<div class="footer">
+		<span id="footer-stats">v1.1</span>
+		<a href="https://github.com/SuyeshJadhav/JobAgent" target="_blank">GitHub ↗</a>
+	</div>
+
 	<script src="popup.js"></script>
 </body>
 </html>

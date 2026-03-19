@@ -1,4 +1,5 @@
 import json
+import time
 import re
 import shutil
 import subprocess
@@ -238,6 +239,9 @@ def run_tailor(job: dict) -> dict:
     Returns:
         dict: Compilation result including PDF path or error details.
     """
+    t_pipeline_start = time.perf_counter()
+    timings = {}
+
     settings = get_settings()
     candidate_name = settings.get("candidate_name", "Suyesh Jadhav")
     safe_name = safe_filename(candidate_name)
@@ -262,16 +266,22 @@ def run_tailor(job: dict) -> dict:
             except Exception:
                 pass
 
+    t0 = time.perf_counter()
     refs = load_references()
     sections = parse_marker_sections(refs["base_resume_tex"])
+    timings["load_references_and_parse"] = round(time.perf_counter() - t0, 3)
 
     # Extract JD keywords once — shared across content generation and project ranking.
     _jd_desc = job.get("description", "")
     if len(_jd_desc) > 8000:
         _jd_desc = _jd_desc[:8000]
+
+    t0 = time.perf_counter()
     jd_keywords = extract_jd_keywords(_jd_desc)
+    timings["extract_jd_keywords"] = round(time.perf_counter() - t0, 3)
 
     # Step 1: Generate Tailored Content via LLM service
+    t0 = time.perf_counter()
     content = generate_tailored_content(
         job_description=_jd_desc,
         sections=sections,
@@ -280,24 +290,30 @@ def run_tailor(job: dict) -> dict:
         keywords=jd_keywords,
     )
     content = _sanitize_tailored_content(content)
+    timings["llm_content_generation"] = round(time.perf_counter() - t0, 3)
 
     # Build a ranked projects section from context_bank and replace static template ordering.
+    t0 = time.perf_counter()
     projects_section_tex, ranking_diagnostics = build_ranked_projects_section(
         job_description=_jd_desc,
         context_bank=refs["context_bank"],
         strategy=job.get("strategy", "full_rewrite"),
         keywords=jd_keywords,
     )
+    timings["project_ranking_and_generation"] = round(time.perf_counter() - t0, 3)
 
     # Step 2: Inject Content into LaTeX template
+    t0 = time.perf_counter()
     tex_str = inject_content_into_tex(
         template_str=refs["base_resume_tex"],
         tailored_content=content,
         sections=sections
     )
     tex_str = _replace_projects_section(tex_str, projects_section_tex)
+    timings["latex_injection"] = round(time.perf_counter() - t0, 3)
 
     # Phase 2/3 deterministic routing.
+    t0 = time.perf_counter()
     if settings.get("deterministic_project_bullets", False):
         if "PROJECTS" in DETERMINISTIC_SECTIONS:
             tex_str, fallback_events = _rewrite_weak_project_bullets_deterministically(
@@ -314,6 +330,7 @@ def run_tailor(job: dict) -> dict:
             )
             tex_str = _replace_experience_section(tex_str, exp_section_tex)
             job["experience_deterministic_ranking"] = exp_diagnostics
+    timings["deterministic_rewrites"] = round(time.perf_counter() - t0, 3)
 
     # Persist diagnostics for reproducibility/debugging.
     job["project_ranking"] = ranking_diagnostics
@@ -321,6 +338,7 @@ def run_tailor(job: dict) -> dict:
         json.dump(job, f, indent=2)
 
     # Step 3: Compile PDF and handle multi-page retry flow
+    t0 = time.perf_counter()
     pdf_res = _compile_latex_to_pdf(
         tex_string=tex_str,
         output_dir=target_dir,
@@ -329,17 +347,30 @@ def run_tailor(job: dict) -> dict:
         tailored_content=content,
         template_str=refs["base_resume_tex"]
     )
+    timings["pdf_compilation"] = round(time.perf_counter() - t0, 3)
 
     # Phase 1 validation: warn_only mode. Preserve output and persist warnings.
+    t0 = time.perf_counter()
     validation_warnings = _validate_generated_resume_artifacts(
         target_dir, refs["context_bank"]
     )
+    timings["validation"] = round(time.perf_counter() - t0, 3)
+
+    timings["total_pipeline"] = round(time.perf_counter() - t_pipeline_start, 3)
+
+    # Persist timings and warnings into job_details.json
     job["validation_warnings"] = validation_warnings
+    job["tailor_timings"] = timings
     with open(target_dir / "job_details.json", "w", encoding="utf-8") as f:
         json.dump(job, f, indent=2)
 
     if validation_warnings:
         pdf_res["validation_warnings"] = validation_warnings
+
+    pdf_res["tailor_timings"] = timings
+    print(f"[TAILOR] Timings for {job.get('company', '?')} - {job.get('title', '?')}:")
+    for step, secs in timings.items():
+        print(f"  {step}: {secs}s")
 
     return pdf_res
 

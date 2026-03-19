@@ -115,6 +115,63 @@ function sendBgMessage(action, payload) {
 	});
 }
 
+// ── Toast Notification System ──
+function showToast(message, type = 'success', duration = 3500) {
+	const TOAST_ID = 'jobagent-toast';
+	let existing = document.getElementById(TOAST_ID);
+	if (existing) existing.remove();
+
+	const colors = {
+		success: { bg: '#00ff00', fg: '#000' },
+		error:   { bg: '#ff3333', fg: '#fff' },
+		info:    { bg: '#fff', fg: '#000' },
+	};
+	const c = colors[type] || colors.info;
+
+	const toast = document.createElement('div');
+	toast.id = TOAST_ID;
+	Object.assign(toast.style, {
+		position: 'fixed', bottom: '24px', right: '24px', zIndex: '9999999',
+		padding: '12px 18px', background: c.bg, color: c.fg,
+		fontFamily: 'monospace', fontSize: '13px', fontWeight: 'bold',
+		border: '2px solid #000', boxShadow: '4px 4px 0px #000',
+		maxWidth: '320px', lineHeight: '1.4',
+		transform: 'translateY(80px)', opacity: '0',
+		transition: 'transform 0.25s ease, opacity 0.25s ease',
+	});
+	toast.textContent = message;
+	document.body.appendChild(toast);
+
+	// Slide in
+	requestAnimationFrame(() => {
+		toast.style.transform = 'translateY(0)';
+		toast.style.opacity = '1';
+	});
+
+	// Auto-dismiss
+	setTimeout(() => {
+		toast.style.transform = 'translateY(80px)';
+		toast.style.opacity = '0';
+		setTimeout(() => toast.remove(), 300);
+	}, duration);
+}
+
+// ── Progress Bar Helper ──
+function showProgress(text, fraction = 0) {
+	const bar = document.getElementById('jobagent-fam-progress');
+	const label = document.getElementById('jobagent-fam-progress-label');
+	const fill = document.getElementById('jobagent-fam-progress-fill');
+	if (!bar || !label || !fill) return;
+	bar.style.display = 'block';
+	label.textContent = text;
+	fill.style.width = Math.round(fraction * 100) + '%';
+}
+
+function hideProgress() {
+	const bar = document.getElementById('jobagent-fam-progress');
+	if (bar) bar.style.display = 'none';
+}
+
 function extractPageTitle() {
 	// Generic words that are page sections, NOT real job titles
 	const GARBAGE = new Set(['careers', 'career', 'jobs', 'job boards', 'career opportunities',
@@ -418,6 +475,38 @@ function buildFAM() {
 	badge.textContent = 'JobAgent';
 	panel.appendChild(badge);
 
+	// ── Progress Bar ──
+	const progressWrap = document.createElement('div');
+	progressWrap.id = 'jobagent-fam-progress';
+	Object.assign(progressWrap.style, {
+		display: 'none', marginBottom: '8px',
+	});
+
+	const progressLabel = document.createElement('div');
+	progressLabel.id = 'jobagent-fam-progress-label';
+	Object.assign(progressLabel.style, {
+		fontSize: '11px', color: '#000', marginBottom: '4px',
+		fontWeight: 'bold', fontFamily: 'monospace',
+	});
+	progressLabel.textContent = 'Working...';
+
+	const progressTrack = document.createElement('div');
+	Object.assign(progressTrack.style, {
+		width: '100%', height: '6px', background: '#ddd',
+		border: '1px solid #000', overflow: 'hidden',
+	});
+
+	const progressFill = document.createElement('div');
+	progressFill.id = 'jobagent-fam-progress-fill';
+	Object.assign(progressFill.style, {
+		width: '0%', height: '100%', background: '#00ff00',
+		transition: 'width 0.4s ease',
+	});
+	progressTrack.appendChild(progressFill);
+	progressWrap.appendChild(progressLabel);
+	progressWrap.appendChild(progressTrack);
+	panel.appendChild(progressWrap);
+
 	// ── Action Buttons Container ──
 	const actionsDiv = document.createElement('div');
 	actionsDiv.id = 'jobagent-fam-actions';
@@ -552,13 +641,22 @@ function renderFAMActions() {
 		}
 	}
 
-	// ── Update badge ──
+	// ── Update badge with color-coded score ──
 	const badge = document.getElementById('jobagent-fam-badge');
 	if (badge) {
 		const job = window._ja.job;
 		if (job && job.job_id) {
-			const score = job.score ? ` · ${job.score}/10` : '';
-			badge.textContent = `JOBAGENT${score}`;
+			const s = parseInt(job.score || 0);
+			const scoreColor = s >= 7 ? '#00ff00' : s >= 5 ? '#ffcc00' : '#ff3333';
+			badge.innerHTML = `JOBAGENT <span style="color:${scoreColor};font-size:14px;">${s}/10</span>`;
+			// Click badge to see reasoning
+			if (job.reason && !badge.dataset.reasonBound) {
+				badge.style.cursor = 'pointer';
+				badge.addEventListener('click', () => {
+					showToast(job.reason.substring(0, 200), 'info', 6000);
+				});
+				badge.dataset.reasonBound = 'true';
+			}
 		}
 	}
 }
@@ -573,6 +671,7 @@ async function handleTrackClick() {
 	const btn = document.getElementById('ja-track');
 	if (!btn) return;
 	btn.textContent = '⏳ Scoring...'; btn.disabled = true;
+	showProgress('Analyzing job description...', 0.3);
 
 	const payload = {
 		url: window.location.href,
@@ -582,32 +681,42 @@ async function handleTrackClick() {
 	};
 
 	try {
+		showProgress('Scoring with LLM...', 0.6);
 		const res = await sendBgMessage('scoutOrganic', payload);
+		showProgress('Done!', 1.0);
+
 		if (res && res.status === 200 && res.data) {
 			const d = res.data;
 			window._ja.job = { job_id: d.job_id, score: d.score, status: d.job_status, reason: d.reason };
 
 			if (d.job_status === 'shortlisted') {
-				btn.textContent = `✅ Tracked! Score: ${d.score}/10`;
+				showToast(`✅ Tracked! Score: ${d.score}/10`, 'success');
+				btn.textContent = `✅ ${d.score}/10`;
 				btn.style.background = '#00ff00';
 			} else {
-				btn.textContent = `⚠️ Score: ${d.score}/10 (${d.job_status})`;
-				btn.style.background = '#ff0000';
+				showToast(`⚠️ Score: ${d.score}/10 — ${d.job_status}`, 'error', 5000);
+				btn.textContent = `⚠️ ${d.score}/10`;
+				btn.style.background = '#ff3333';
+				btn.style.color = '#fff';
 			}
 
-			// Transition state after a brief pause
 			setTimeout(() => {
+				hideProgress();
 				window._ja.state = STATE.TRACKED;
 				renderFAMActions();
-			}, 2000);
+			}, 1500);
 		} else {
+			hideProgress();
+			showToast('❌ Failed to track job', 'error');
 			btn.textContent = '❌ Error';
-			setTimeout(() => { btn.textContent = '📥 Track & Score Job'; btn.disabled = false; }, 3000);
+			setTimeout(() => { btn.textContent = '📥 Track & Score'; btn.disabled = false; }, 3000);
 		}
 	} catch (e) {
 		console.error('[JobAgent] Track error:', e);
+		hideProgress();
+		showToast('❌ Connection error — is the backend running?', 'error', 5000);
 		btn.textContent = '❌ Error';
-		setTimeout(() => { btn.textContent = '📥 Track & Score Job'; btn.disabled = false; }, 3000);
+		setTimeout(() => { btn.textContent = '📥 Track & Score'; btn.disabled = false; }, 3000);
 	}
 }
 
@@ -616,45 +725,69 @@ async function handleTrackClick() {
 async function handleTailorClick() {
 	const btn = document.getElementById('ja-tailor');
 	if (!btn) return;
-	btn.textContent = '⏳ Forging Resume...'; btn.disabled = true;
+	btn.textContent = '⏳ Tailoring...'; btn.disabled = true;
+
+	// Phased progress animation
+	const phases = [
+		{ text: '🔍 Reading job description...', frac: 0.15 },
+		{ text: '🧠 Extracting keywords...', frac: 0.30 },
+		{ text: '✍️ Generating tailored content...', frac: 0.55 },
+		{ text: '📐 Ranking projects...', frac: 0.70 },
+		{ text: '📄 Compiling PDF...', frac: 0.90 },
+	];
+	let phaseIdx = 0;
+	showProgress(phases[0].text, phases[0].frac);
+
+	// Advance phases on a timer (the actual pipeline is server-side)
+	const phaseTimer = setInterval(() => {
+		phaseIdx++;
+		if (phaseIdx < phases.length) {
+			showProgress(phases[phaseIdx].text, phases[phaseIdx].frac);
+		}
+	}, 2000);
 
 	const payload = { url: window.location.href };
 	if (window._ja.job?.job_id) payload.job_id = window._ja.job.job_id;
 
 	try {
 		const res = await sendBgMessage('tailorGenerate', payload);
+		clearInterval(phaseTimer);
+
 		if (res && res.status === 200 && res.data) {
+			showProgress('✅ Done!', 1.0);
 			const { resume_base64, filename, job_id } = res.data;
 
-			// Store Base64/Blob URL
 			const blob = base64ToBlob(resume_base64);
 			const url = URL.createObjectURL(blob);
 			window._ja.pendingResume = { base64: resume_base64, filename: filename || 'Resume.pdf', url: url };
 
-			btn.textContent = '✅ Resume Ready';
-			btn.style.background = '#fff';
-			btn.style.color = '#000';
+			showToast('✅ Resume tailored and ready!', 'success');
 
-			// ── Persist to chrome.storage.local ──
 			const jid = job_id || window._ja.job?.job_id;
 			if (jid) {
 				try { chrome.storage.local.set({ [`tailored_${jid}`]: true }); } catch (e) { /* ok */ }
 			}
 
-			// Transition to PREVIEWED state IMMEDIATELY
-			window._ja.state = STATE.PREVIEWED;
-			renderFAMActions();
+			setTimeout(() => {
+				hideProgress();
+				window._ja.state = STATE.PREVIEWED;
+				renderFAMActions();
+			}, 800);
 		} else if (res && res.status === 404) {
-			btn.textContent = '❌ Job Not Found';
-			setTimeout(() => { btn.textContent = '📄 Tailor Resume'; btn.disabled = false; }, 3000);
+			hideProgress();
+			showToast('❌ Job not found — track it first', 'error');
+			btn.textContent = '📄 Tailor Resume'; btn.disabled = false;
 		} else {
-			btn.textContent = '❌ Error';
-			setTimeout(() => { btn.textContent = '📄 Tailor Resume'; btn.disabled = false; }, 3000);
+			hideProgress();
+			showToast('❌ Tailoring failed', 'error');
+			btn.textContent = '📄 Tailor Resume'; btn.disabled = false;
 		}
 	} catch (e) {
+		clearInterval(phaseTimer);
+		hideProgress();
 		console.error('[JobAgent] Tailor error:', e);
-		btn.textContent = '❌ Error';
-		setTimeout(() => { btn.textContent = '📄 Tailor Resume'; btn.disabled = false; }, 3000);
+		showToast('❌ Connection error — is the backend running?', 'error', 5000);
+		btn.textContent = '📄 Tailor Resume'; btn.disabled = false;
 	}
 }
 
@@ -801,6 +934,7 @@ async function handleInjectClick(btn) {
 	if (fi) {
 		const ok = injectStoredResume(fi, base64, filename);
 		if (ok) {
+			showToast('✅ Resume injected into upload field!', 'success');
 			btn.textContent = '✅ Injected!';
 			btn.style.background = '#fff';
 			btn.style.color = '#000';
@@ -810,11 +944,11 @@ async function handleInjectClick(btn) {
 				renderFAMActions();
 			}, 1500);
 		} else {
+			showToast('❌ Injection failed — try manual upload', 'error');
 			btn.textContent = '❌ Failed';
 		}
 	} else {
-		// Fallback to manual download for chatbot ATS (Paradox) or cross-origin iframes
-		alert('File upload field not found on this page. Downloading your tailored resume for manual drag-and-drop.');
+		showToast('📥 No upload field found — downloading resume for manual upload', 'info', 5000);
 
 		const blob = base64ToBlob(base64);
 		const url = URL.createObjectURL(blob);
@@ -853,7 +987,8 @@ async function handleMarkAppliedClick() {
 		const res = await sendBgMessage('sniperComplete', payload);
 		if (res && res.status === 200 && res.data) {
 			const shredCount = res.data.shredded ? res.data.shredded.length : 0;
-			btn.textContent = `✅ SSD Clean (${shredCount} shredded)`;
+			showToast(`✅ Marked applied! ${shredCount} artifact(s) cleaned up.`, 'success');
+			btn.textContent = `✅ Applied`;
 			btn.style.background = '#fff';
 			btn.style.color = '#000';
 			btn.style.cursor = 'default';

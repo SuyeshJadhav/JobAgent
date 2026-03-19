@@ -27,94 +27,99 @@ def get_settings() -> dict:
         return json.load(f)
 
 
-def get_llm_client() -> OpenAI:
+# ── Unified LLM Client ──────────────────────────────────────────────────────
+
+
+def get_client_and_model() -> tuple[OpenAI, str]:
     """
-    Initializes and returns an OpenAI-compatible client based on the 
-    provider (Ollama or Groq) specified in settings.
+    Single source of truth for obtaining an LLM client and model name.
+
+    Reads ``llm_provider`` from *settings.json* and routes to the correct
+    backend (Groq cloud or Ollama local).  Every LLM-consuming service in
+    the project should call this function instead of constructing clients
+    ad-hoc.
 
     Returns:
-        OpenAI: Configured client instance.
+        tuple[OpenAI, str]: (client, model_name)
 
     Raises:
-        ValueError: If the provider is unknown or keys are missing.
+        ValueError: If the provider is unknown or required keys are missing.
     """
     settings = get_settings()
-    provider = settings.get("llm_provider", "ollama")
+    provider = settings.get("llm_provider", "groq")
+
+    if provider == "groq":
+        api_key = os.getenv("GROQ_API_KEY", "")
+        if not api_key:
+            raise ValueError(
+                "Groq API key is missing. Set GROQ_API_KEY in the .env file "
+                "or switch llm_provider to 'ollama' in settings."
+            )
+        client = OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=api_key,
+        )
+        model = settings.get(
+            "groq_model",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+        )
+        return client, model
 
     if provider == "ollama":
         base_url = settings.get("ollama_base_url", "http://localhost:11434/v1")
-        return OpenAI(base_url=base_url, api_key="ollama")
-    elif provider == "groq":
-        api_key = os.getenv("GROQ_API_KEY", "")
-        if not api_key:
-            raise ValueError("Groq API key is missing in .env (GROQ_API_KEY)")
-        return OpenAI(base_url="https://api.groq.com/openai/v1", api_key=api_key)
-    else:
-        raise ValueError(f"Unknown llm_provider: {provider}")
-
-
-def get_tailor_client() -> tuple[OpenAI, str]:
-    """Return tailor client/model using Groq from .env when available, else Ollama fallback."""
-    settings = get_settings()
-    groq_key = os.getenv("GROQ_API_KEY", "")
-
-    if groq_key:
-        client = OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=groq_key,
-        )
-        model = settings.get(
-            "groq_tailor_model",
-            "meta-llama/llama-4-scout-17b-16e-instruct",
-        )
-        print(f"[TAILOR] Using Groq {model}")
+        model = settings.get("ollama_model", "qwen2.5:7b")
+        client = OpenAI(base_url=base_url, api_key="ollama")
         return client, model
 
-    # Fallback to Ollama when GROQ_API_KEY is not set.
-    base_url = settings.get("ollama_base_url", "http://localhost:11434/v1")
-    model = settings.get("ollama_model", "qwen2.5:7b")
-    print(f"[TAILOR] Using Ollama {model}")
-    return OpenAI(base_url=base_url, api_key="ollama"), model
+    raise ValueError(f"Unknown llm_provider: '{provider}'")
+
+
+# ── Backward-compatible wrappers ─────────────────────────────────────────────
+# These delegate to get_client_and_model() so that existing callers
+# (scorer, cover_letter, sniper, profile_rag, resume_manager) keep working
+# without any import changes.
+
+
+def get_llm_client() -> OpenAI:
+    """Returns only the OpenAI client (legacy helper)."""
+    client, _ = get_client_and_model()
+    return client
 
 
 def get_model_name() -> str:
-    """
-    Retrieves the specific model identifier to be used for LLM completions.
-
-    Returns:
-        str: Model name (e.g., 'qwen2.5:7b').
-    """
-    settings = get_settings()
-    provider = settings.get("llm_provider", "ollama")
-
-    if provider == "ollama":
-        return settings.get("ollama_model", "qwen2.5:7b")
-    elif provider == "groq":
-        return "llama-3.1-8b-instant"
-    else:
-        raise ValueError(f"Unknown llm_provider: {provider}")
+    """Returns only the model name string (legacy helper)."""
+    _, model = get_client_and_model()
+    return model
 
 
-def test_connection() -> bool:
+def get_tailor_client() -> tuple[OpenAI, str]:
+    """Alias for get_client_and_model (used by resume_generators)."""
+    client, model = get_client_and_model()
+    print(f"[LLM] Using {get_settings().get('llm_provider', 'groq')} → {model}")
+    return client, model
+
+
+# ── Health check ─────────────────────────────────────────────────────────────
+
+
+def test_connection() -> dict:
     """
     Performs a minimal health check call to the configured LLM provider.
 
     Returns:
-        bool: True if the connection is successful.
+        dict: {ok: bool, provider: str, model: str, error: str|None}
     """
     try:
-        client = get_llm_client()
-        model_name = get_model_name()
+        client, model = get_client_and_model()
+        provider = get_settings().get("llm_provider", "groq")
 
-        # Test connection by making a small request
         response = client.chat.completions.create(
-            model=model_name,
+            model=model,
             messages=[{"role": "user", "content": "Hi"}],
-            max_tokens=5
+            max_tokens=5,
         )
-        if response.choices:
-            return True
-        return False
+        ok = bool(response.choices)
+        return {"ok": ok, "provider": provider, "model": model, "error": None}
     except Exception as e:
         print(f"Connection test failed: {e}")
-        return False
+        return {"ok": False, "provider": "unknown", "model": "unknown", "error": str(e)}
