@@ -21,6 +21,8 @@ backend/tracked_jobs.xlsx
 tracked_jobs.csv
 tracked_jobs.csv.backup
 *.db
+*.db-wal
+*.db-shm
 *.xlsx
 *.bak
 
