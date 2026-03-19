@@ -520,16 +520,32 @@ def _compile_cover_letter_to_pdf(tex_content: str, output_dir: Path, filename: s
         return {"status": "error", "error": str(e)}
 
 
-def run_cover_letter(job: dict) -> dict:
+def run_cover_letter(
+    job: dict,
+    references_override: Path = None,
+    candidate_name: str = None,
+    groq_api_key: str = None
+) -> dict:
     """
     Main pipeline to generate a cover letter.
     Writes output into the same target directory as resume_tailor:
-    outputs/applications/{Company}-{Role}-{YYYY-MM-DD}/cover letter.pdf
+    outputs/applications/{Company}-{Role}-{YYYY-MM-DD}/cover_letter.pdf
+
+    Args:
+        job (dict): Job metadata.
+        references_override (Path, optional): Load reference files from this directory.
+        candidate_name (str, optional): Override candidate name (not used in cover letter, but kept for API consistency).
+        groq_api_key (str, optional): Groq API key override.
     """
     target_dir = _get_readable_job_dir(job)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    refs = load_references()
+    # Load references from override dir or default
+    if references_override:
+        from backend.services.resume_tailor import _load_references_from_dir
+        refs = _load_references_from_dir(references_override)
+    else:
+        refs = load_references()
     context_summary = _build_context_summary(refs["context_bank"])
 
     desc = job.get("description", "")

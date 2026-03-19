@@ -6,6 +6,9 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 import asyncio
 import json
+import tempfile
+import shutil
+from uuid import uuid4
 
 from backend.services.resume_tailor import run_tailor
 from backend.services.cover_letter import run_cover_letter
@@ -29,6 +32,19 @@ OUTPUT_DIR = Path(__file__).parent.parent.parent / "outputs" / "applications"
 class GenerateRequest(BaseModel):
     job_id: Optional[str] = None
     url: Optional[str] = None
+
+
+class RemoteTailorRequest(BaseModel):
+    """Request model for remote tailor endpoint (used by remote users with their own workspace)."""
+    job_description: str
+    company: str
+    role: str
+    candidate_name: str
+    main_tex: str
+    context_bank_toml: str
+    candidate_profile: str
+    cover_letter_template: str = ""
+    groq_api_key: str = ""
 
 
 def _resolve_job(payload: GenerateRequest) -> dict:
@@ -368,3 +384,94 @@ async def run_pending(background_tasks: BackgroundTasks):
         "message": f"Triggered parallel tailoring for {len(jobs)} shortlisted jobs (concurrency={2}).",
         "count": len(jobs)
     }
+
+
+@router.post("/remote")
+async def remote_tailor(req: RemoteTailorRequest):
+    """
+    Remote tailor endpoint for users running JobAgent client-side.
+
+    She provides her own LaTeX files, context, and Groq key.
+    We tailor using her compute (or fallback to Ollama on this machine).
+    Returns base64-encoded PDF + cover letter.
+    """
+    tmp = None
+    try:
+        # 1. Create isolated temp workspace
+        tmp = Path(tempfile.gettempdir()) / f"jobagent_{uuid4().hex}"
+        tmp.mkdir(parents=True, exist_ok=True)
+
+        # 2. Write her files to temp workspace
+        (tmp / "main.tex").write_text(req.main_tex, encoding="utf-8")
+        (tmp / "context_bank.toml").write_text(req.context_bank_toml, encoding="utf-8")
+        (tmp / "candidate_profile.md").write_text(req.candidate_profile, encoding="utf-8")
+        if req.cover_letter_template:
+            (tmp / "cover_letter_template.md").write_text(
+                req.cover_letter_template, encoding="utf-8")
+
+        # 3. Copy shared LaTeX commands if available
+        shared_commands = Path(__file__).parent.parent.parent / \
+            "references" / "custom-commands.tex"
+        if shared_commands.exists():
+            shutil.copy(shared_commands, tmp / "custom-commands.tex")
+
+        # 4. Build job dict for tailor
+        job = {
+            "job_id": uuid4().hex[:12],
+            "company": req.company,
+            "title": req.role,
+            "description": req.job_description,
+        }
+
+        # 5. Run tailor with her workspace + her key
+        result = run_tailor(
+            job=job,
+            references_override=tmp,
+            candidate_name=req.candidate_name,
+            groq_api_key=req.groq_api_key if req.groq_api_key else None
+        )
+
+        if result.get("status") == "error":
+            raise HTTPException(
+                status_code=500,
+                detail=f"Tailoring failed: {result.get('error', 'Unknown error')}"
+            )
+
+        # 6. Read PDF as base64
+        pdf_path = Path(result["pdf_path"])
+        if not pdf_path.exists():
+            raise HTTPException(
+                status_code=500,
+                detail="PDF file not found after tailoring"
+            )
+
+        pdf_b64 = base64.b64encode(pdf_path.read_bytes()).decode()
+
+        # 7. Read cover letter if generated
+        cover_letter = ""
+        cover_letter_path = result.get("cover_letter_path")
+        if cover_letter_path:
+            cl_path = Path(cover_letter_path)
+            if cl_path.exists() and cl_path.is_file():
+                cover_letter = cl_path.read_text(encoding="utf-8")
+
+        return {
+            "pdf_base64": pdf_b64,
+            "cover_letter": cover_letter,
+            "filename": f"{req.candidate_name}.pdf",
+            "warnings": result.get("validation_warnings", [])
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[REMOTE TAILOR] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        # Cleanup temp directory
+        if tmp and tmp.exists():
+            try:
+                shutil.rmtree(tmp, ignore_errors=True)
+            except Exception:
+                pass

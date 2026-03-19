@@ -95,7 +95,8 @@ def get_model_name() -> str:
 def get_tailor_client() -> tuple[OpenAI, str]:
     """Alias for get_client_and_model (used by resume_generators)."""
     client, model = get_client_and_model()
-    print(f"[LLM] Using {get_settings().get('llm_provider', 'groq')} → {model}")
+    print(
+        f"[LLM] Using {get_settings().get('llm_provider', 'groq')} → {model}")
     return client, model
 
 
@@ -123,3 +124,49 @@ def test_connection() -> dict:
     except Exception as e:
         print(f"Connection test failed: {e}")
         return {"ok": False, "provider": "unknown", "model": "unknown", "error": str(e)}
+
+
+def get_tailor_client_with_key(
+    groq_api_key: str = None
+) -> tuple[OpenAI, str]:
+    """
+    Same as get_tailor_client() but accepts an optional Groq key override.
+
+    Args:
+        groq_api_key (str, optional): Groq API key provided per-request.
+                                       If provided, uses it.
+                                       If not, falls back to environment GROQ_API_KEY.
+
+    Returns:
+        tuple[OpenAI, str]: (client, model) tuple.
+                           Uses Groq if key available, else Ollama.
+    """
+    if groq_api_key:
+        client = OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=groq_api_key
+        )
+        model = "meta-llama/llama-4-scout-17b-16e-instruct"
+        return client, model
+
+    # Fallback: check environment GROQ_API_KEY
+    env_key = os.getenv("GROQ_API_KEY", "")
+    if env_key:
+        client = OpenAI(
+            base_url="https://api.groq.com/openai/v1",
+            api_key=env_key
+        )
+        model = "meta-llama/llama-4-scout-17b-16e-instruct"
+        return client, model
+
+    # Final fallback: use Ollama
+    settings = get_settings()
+    client = OpenAI(
+        base_url=settings.get(
+            "ollama_base_url",
+            "http://localhost:11434/v1"
+        ),
+        api_key="ollama"
+    )
+    model = settings.get("ollama_model", "qwen2.5:7b")
+    return client, model

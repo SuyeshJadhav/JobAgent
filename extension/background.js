@@ -3,11 +3,13 @@
  * Bridges content script messages to the local FastAPI backend.
  */
 
+const BACKEND_URL = JOBAGENT_CONFIG.BACKEND_URL;
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	if (request.action === 'fillProfile') {
 		console.log('Sending payload:', request.payload);
 
-		fetch('http://localhost:8000/api/profile/fill', {
+		fetch(`${BACKEND_URL}/api/profile/fill`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request.payload),
@@ -33,7 +35,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	}
 
 	if (request.action === 'completeApplication') {
-		fetch('http://localhost:8000/api/profile/application_complete', {
+		fetch(`${BACKEND_URL}/api/profile/application_complete`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request.payload),
@@ -45,7 +47,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	}
 
 	if (request.action === 'sniperAnswer') {
-		fetch('http://localhost:8000/api/sniper/answer', {
+		fetch(`${BACKEND_URL}/api/sniper/answer`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request.payload),
@@ -69,7 +71,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	}
 
 	if (request.action === 'sniperComplete') {
-		fetch('http://localhost:8000/api/sniper/complete', {
+		fetch(`${BACKEND_URL}/api/sniper/complete`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request.payload),
@@ -85,7 +87,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 	if (request.action === 'scoutCheckUrl') {
 		const encoded = encodeURIComponent(request.payload.url);
-		fetch(`http://localhost:8000/api/scout/check_url?url=${encoded}`)
+		fetch(`${BACKEND_URL}/api/scout/check_url?url=${encoded}`)
 			.then(res => res.json())
 			.then(data => sendResponse({ status: 200, data }))
 			.catch(err => {
@@ -96,7 +98,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	}
 
 	if (request.action === 'scoutOrganic') {
-		fetch('http://localhost:8000/api/scout/organic', {
+		fetch(`${BACKEND_URL}/api/scout/organic`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request.payload),
@@ -117,7 +119,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 	}
 
 	if (request.action === 'tailorGenerate') {
-		fetch('http://localhost:8000/api/tailor/generate', {
+		fetch(`${BACKEND_URL}/api/tailor/generate`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify(request.payload),

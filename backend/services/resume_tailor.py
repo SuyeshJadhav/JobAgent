@@ -46,6 +46,43 @@ DETERMINISTIC_SECTIONS = {
 }
 
 
+def _load_references_from_dir(refs_dir: Path) -> dict:
+    """
+    Load references from a specific directory instead of REFERENCES_DIR.
+    Used for remote/override workflows.
+    """
+    import tomllib
+
+    base_tex = (refs_dir / "main.tex").read_text(encoding="utf-8")
+
+    with open(refs_dir / "context_bank.toml", "rb") as f:
+        context_bank = tomllib.load(f)
+
+    candidate_profile = (
+        refs_dir / "candidate_profile.md").read_text(encoding="utf-8")
+
+    cover_letter_template = ""
+    cover_letter_template_path = refs_dir / "cover_letter_template.md"
+    if cover_letter_template_path.exists():
+        cover_letter_template = cover_letter_template_path.read_text(
+            encoding="utf-8")
+
+    cover_letter_tex_template = ""
+    cover_letter_tex_path = refs_dir / "cover_letter.tex"
+    if cover_letter_tex_path.exists():
+        cover_letter_tex_template = cover_letter_tex_path.read_text(
+            encoding="utf-8")
+
+    return {
+        "base_resume_tex": base_tex,
+        "context_bank": context_bank,
+        "candidate_profile": candidate_profile,
+        "cover_letter_template": cover_letter_template,
+        "cover_letter_tone": cover_letter_template,
+        "cover_letter_tex_template": cover_letter_tex_template,
+    }
+
+
 def _extract_projects_body(tex_string: str) -> tuple[int, int, str] | None:
     match = re.search(
         r"\\section\{Projects\}(?P<body>.*?)(?=\\section\{Experience\})",
@@ -401,7 +438,12 @@ def _compile_latex_to_pdf(tex_string: str, output_dir: Path, filename: str,
         return {"status": "error", "error": str(e)}
 
 
-def run_tailor(job: dict) -> dict:
+def run_tailor(
+    job: dict,
+    references_override: Path = None,
+    candidate_name: str = None,
+    groq_api_key: str = None
+) -> dict:
     """
     The main high-level pipeline for tailoring a resume.
 
@@ -416,6 +458,11 @@ def run_tailor(job: dict) -> dict:
     Args:
         job (dict): Expected to contain 'company', 'title', 'description', 
                    and optionally 'job_id' and 'strategy'.
+        references_override (Path, optional): Load reference files from this directory
+                                              instead of default REFERENCES_DIR.
+        candidate_name (str, optional): Override candidate name from settings.
+        groq_api_key (str, optional): Groq API key to use for this run.
+                                       If provided, uses Groq; else falls back to settings.
 
     Returns:
         dict: Compilation result including PDF path or error details.
@@ -424,8 +471,10 @@ def run_tailor(job: dict) -> dict:
     timings = {}
 
     settings = get_settings()
-    candidate_name = settings.get("candidate_name", "Suyesh Jadhav")
-    safe_name = safe_filename(candidate_name)
+    # Use override if provided, else load from settings
+    final_candidate_name = candidate_name or settings.get(
+        "candidate_name", "Suyesh Jadhav")
+    safe_name = safe_filename(final_candidate_name)
 
     from backend.services.db_tracker import _get_readable_job_dir
 
@@ -448,7 +497,11 @@ def run_tailor(job: dict) -> dict:
                 pass
 
     t0 = time.perf_counter()
-    refs = load_references()
+    # Load references from override dir or default
+    if references_override:
+        refs = _load_references_from_dir(references_override)
+    else:
+        refs = load_references()
     sections = parse_marker_sections(refs["base_resume_tex"])
     timings["load_references_and_parse"] = round(time.perf_counter() - t0, 3)
 

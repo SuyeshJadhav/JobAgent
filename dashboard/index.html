@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JobAgent Remote Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      [data-status="connected"] {
+        color: #10b981;
+      }
+      [data-status="disconnected"] {
+        color: #ef4444;
+      }
+      .spinner {
+        border: 2px solid #e5e7eb;
+        border-top: 2px solid #3b82f6;
+        animation: spin 1s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .progress-bar {
+        background: linear-gradient(90deg, #3b82f6, #10b981);
+      }
+    </style>
+  </head>
+  <body class="bg-slate-900 text-slate-100">
+    <div class="min-h-screen p-8">
+      <!-- Header -->
+      <div class="max-w-6xl mx-auto">
+        <div class="mb-8">
+          <h1 class="text-4xl font-bold mb-2">JobAgent Remote Dashboard</h1>
+          <p class="text-slate-400">
+            Tailor resumes and generate cover letters using your own templates
+          </p>
+        </div>
+
+        <!-- CONFIG SECTION - Top of page -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-8 border border-slate-700">
+          <h2 class="text-xl font-bold mb-4">⚙️ Configuration</h2>
+          <p class="text-slate-400 mb-4">
+            Edit these 3 values once at the top of the page.
+          </p>
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm font-mono text-slate-300 mb-1"
+                >BACKEND_URL</label
+              >
+              <input
+                type="text"
+                id="backend-url"
+                value="http://localhost:8000"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white font-mono text-sm"
+                placeholder="http://192.168.x.x:8000"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-mono text-slate-300 mb-1"
+                >CANDIDATE_NAME</label
+              >
+              <input
+                type="text"
+                id="candidate-name"
+                value="Swaranjali Jadhav"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white font-mono text-sm"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-mono text-slate-300 mb-1"
+                >GROQ_API_KEY (kept in memory, never sent except in tailor
+                requests)</label
+              >
+              <input
+                type="password"
+                id="groq-key"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white font-mono text-sm"
+                placeholder="Your Groq API key"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- CONNECTION STATUS -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-8 border border-slate-700">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-lg font-semibold mb-2">Connection Status</h3>
+              <p id="connection-status" class="text-slate-400">
+                Testing connection...
+              </p>
+              <p id="backend-ip" class="text-slate-500 text-sm mt-1"></p>
+            </div>
+            <div
+              id="status-dot"
+              class="w-4 h-4 rounded-full bg-yellow-500"
+            ></div>
+          </div>
+        </div>
+
+        <!-- FILE LOADER PANEL -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-8 border border-slate-700">
+          <h2 class="text-xl font-bold mb-4">📁 Load Your Reference Files</h2>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium mb-2"
+                >main.tex <span class="text-red-500">*</span>
+                <span id="check-main" class="text-green-500"></span
+              ></label>
+              <input
+                type="file"
+                id="file-main-tex"
+                accept=".tex"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2"
+                >context_bank.toml <span class="text-red-500">*</span>
+                <span id="check-context" class="text-green-500"></span
+              ></label>
+              <input
+                type="file"
+                id="file-context-bank"
+                accept=".toml"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2"
+                >candidate_profile.md <span class="text-red-500">*</span>
+                <span id="check-profile" class="text-green-500"></span
+              ></label>
+              <input
+                type="file"
+                id="file-candidate-profile"
+                accept=".md"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              />
+            </div>
+            <div>
+              <label class="block text-sm font-medium mb-2"
+                >cover_letter_template.md (optional)
+                <span id="check-cover" class="text-green-500"></span
+              ></label>
+              <input
+                type="file"
+                id="file-cover-template"
+                accept=".md"
+                class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded text-white text-sm"
+              />
+            </div>
+          </div>
+          <div
+            id="files-ready"
+            class="mt-4 p-3 bg-green-900 border border-green-700 rounded text-green-200 hidden"
+          >
+            ✅ All required files loaded
+          </div>
+        </div>
+
+        <!-- SCOUT SECTION -->
+        <div class="bg-slate-800 rounded-lg p-6 mb-8 border border-slate-700">
+          <h2 class="text-xl font-bold mb-4">🔍 Scout Jobs</h2>
+          <button
+            id="btn-scout"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded font-medium transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Run Scout
+          </button>
+          <div id="scout-spinner" class="mt-4 hidden">
+            <div class="spinner w-6 h-6"></div>
+            <p class="text-slate-400 mt-2">Scouting jobs...</p>
+          </div>
+        </div>
+
+        <!-- JOBS TABLE -->
+        <div class="bg-slate-800 rounded-lg p-6 border border-slate-700">
+          <h2 class="text-xl font-bold mb-4">📋 Jobs</h2>
+          <div id="jobs-table-container" class="overflow-x-auto">
+            <table id="jobs-table" class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-slate-700">
+                  <th class="px-4 py-2 text-left">Company</th>
+                  <th class="px-4 py-2 text-left">Role</th>
+                  <th class="px-4 py-2 text-center">Score</th>
+                  <th class="px-4 py-2 text-center">Status</th>
+                  <th class="px-4 py-2 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody id="jobs-tbody">
+                <tr>
+                  <td colspan="5" class="px-4 py-8 text-center text-slate-400">
+                    No jobs yet. Run Scout to fetch jobs.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAILOR MODAL -->
+        <div
+          id="tailor-modal"
+          class="fixed inset-0 bg-black bg-opacity-75 hidden flex items-center justify-center z-50"
+        >
+          <div
+            class="bg-slate-800 rounded-lg p-6 max-w-md w-full border border-slate-700"
+          >
+            <h3 id="modal-title" class="text-xl font-bold mb-4"></h3>
+            <div id="modal-content"></div>
+            <div id="modal-progress" class="mt-4 hidden">
+              <div class="w-full bg-slate-700 rounded-full h-2 overflow-hidden">
+                <div
+                  id="modal-progress-bar"
+                  class="progress-bar h-full"
+                  style="width: 0%"
+                ></div>
+              </div>
+              <p id="modal-progress-text" class="text-slate-400 text-sm mt-2">
+                Processing...
+              </p>
+            </div>
+            <div id="modal-result" class="mt-4 hidden">
+              <p id="modal-result-text"></p>
+              <a
+                id="pdf-download-link"
+                href="#"
+                class="mt-2 inline-block px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium text-white"
+              >
+                Download PDF
+              </a>
+            </div>
+            <div class="mt-6 flex gap-3 justify-end">
+              <button
+                id="modal-cancel"
+                class="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded font-medium transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // ===== CONFIGURATION (Edit these 3 lines) =====
+      const FILE_STORAGE = {};
+      let BACKEND_URL = "http://localhost:8000";
+      let CANDIDATE_NAME = "Swaranjali Jadhav";
+      let GROQ_API_KEY = "";
+      let JOBS = [];
+
+      // ===== DOM ELEMENTS =====
+      const elBackendUrl = document.getElementById("backend-url");
+      const elCandidateName = document.getElementById("candidate-name");
+      const elGroqKey = document.getElementById("groq-key");
+      const elStatusDot = document.getElementById("status-dot");
+      const elConnectionStatus = document.getElementById("connection-status");
+      const elBackendIp = document.getElementById("backend-ip");
+      const elFiles = {
+        mainTex: document.getElementById("file-main-tex"),
+        contextBank: document.getElementById("file-context-bank"),
+        candidateProfile: document.getElementById("file-candidate-profile"),
+        coverTemplate: document.getElementById("file-cover-template"),
+      };
+      const elChecks = {
+        main: document.getElementById("check-main"),
+        context: document.getElementById("check-context"),
+        profile: document.getElementById("check-profile"),
+        cover: document.getElementById("check-cover"),
+      };
+      const elFilesReady = document.getElementById("files-ready");
+      const elBtnScout = document.getElementById("btn-scout");
+      const elScoutSpinner = document.getElementById("scout-spinner");
+      const elJobsTable = document.getElementById("jobs-tbody");
+      const elModal = document.getElementById("tailor-modal");
+      const elModalTitle = document.getElementById("modal-title");
+      const elModalContent = document.getElementById("modal-content");
+      const elModalProgress = document.getElementById("modal-progress");
+      const elModalProgressBar = document.getElementById("modal-progress-bar");
+      const elModalProgressText = document.getElementById(
+        "modal-progress-text",
+      );
+      const elModalResult = document.getElementById("modal-result");
+      const elModalResultText = document.getElementById("modal-result-text");
+      const elPdfLink = document.getElementById("pdf-download-link");
+      const elModalCancel = document.getElementById("modal-cancel");
+
+      // ===== FUNCTIONS =====
+
+      // Update config from inputs
+      function updateConfig() {
+        BACKEND_URL = elBackendUrl.value.trim();
+        CANDIDATE_NAME = elCandidateName.value.trim();
+        GROQ_API_KEY = elGroqKey.value.trim();
+      }
+
+      // Check backend connection
+      async function checkConnection() {
+        updateConfig();
+        elStatusDot.className = "w-4 h-4 rounded-full bg-yellow-500";
+        elConnectionStatus.textContent = "Testing connection...";
+        elBackendIp.textContent = `Backend: ${BACKEND_URL}`;
+
+        try {
+          const res = await fetch(`${BACKEND_URL}/health`);
+          if (res.ok) {
+            elStatusDot.className = "w-4 h-4 rounded-full bg-green-500";
+            elConnectionStatus.textContent = "✅ Connected";
+            return true;
+          }
+        } catch (e) {
+          // error
+        }
+
+        elStatusDot.className = "w-4 h-4 rounded-full bg-red-500";
+        elConnectionStatus.textContent =
+          "❌ Cannot reach backend. Check BACKEND_URL.";
+        return false;
+      }
+
+      // File loading
+      async function loadFile(input, key) {
+        const file = input.files[0];
+        if (!file) return;
+
+        FILE_STORAGE[key] = await file.text();
+        elChecks[key].textContent = "✅";
+        checkFilesReady();
+      }
+
+      function checkFilesReady() {
+        const required = ["main", "context", "profile"];
+        const ready = required.every((k) => FILE_STORAGE[k]);
+
+        elFilesReady.classList.toggle("hidden", !ready);
+        elBtnScout.disabled = !ready;
+      }
+
+      // Run Scout
+      elBtnScout.addEventListener("click", async () => {
+        updateConfig();
+
+        elBtnScout.disabled = true;
+        elScoutSpinner.classList.remove("hidden");
+
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/scout/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              candidate_profile: FILE_STORAGE.profile || "",
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            JOBS = data.jobs || [];
+            renderJobsTable();
+          }
+        } catch (e) {
+          alert("Scout failed: " + e.message);
+        } finally {
+          elBtnScout.disabled = false;
+          elScoutSpinner.classList.add("hidden");
+        }
+      });
+
+      // Render jobs table
+      function renderJobsTable() {
+        elJobsTable.innerHTML = "";
+
+        if (JOBS.length === 0) {
+          elJobsTable.innerHTML =
+            '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400">No jobs found</td></tr>';
+          return;
+        }
+
+        JOBS.forEach((job) => {
+          const score = job.score || 0;
+          const status = job.status || "unknown";
+          const scoreClass =
+            score >= 8
+              ? "bg-green-900 text-green-200"
+              : score >= 6
+                ? "bg-yellow-900 text-yellow-200"
+                : "bg-red-900 text-red-200";
+          const canTailor = status === "shortlisted" || status === "tailored";
+
+          const tr = document.createElement("tr");
+          tr.className =
+            "border-b border-slate-700 hover:bg-slate-700 transition";
+          tr.innerHTML = `
+                <td class="px-4 py-3">${job.company || "N/A"}</td>
+                <td class="px-4 py-3">${job.title || "N/A"}</td>
+                <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded text-xs font-medium ${scoreClass}">${score}</span></td>
+                <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded text-xs font-medium bg-slate-700">${status}</span></td>
+                <td class="px-4 py-3 text-center">
+                    ${canTailor ? `<button class="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs font-medium transition tailor-btn" data-job-id="${job.job_id}">Tailor</button>` : "—"}
+                </td>
+            `;
+          elJobsTable.appendChild(tr);
+        });
+
+        // Attach tailor button listeners
+        document.querySelectorAll(".tailor-btn").forEach((btn) => {
+          btn.addEventListener("click", () => tailorJob(btn.dataset.jobId));
+        });
+      }
+
+      // Tailor a job
+      async function tailorJob(jobId) {
+        updateConfig();
+
+        const job = JOBS.find((j) => j.job_id === jobId);
+        if (!job) return;
+
+        elModalTitle.textContent = `Tailor Resume: ${job.company} - ${job.title}`;
+        elModalContent.innerHTML = `
+            <p class="text-slate-300 mb-4">Generating tailored resume for:</p>
+            <p class="font-mono text-sm text-slate-400 mb-4">${job.company}</p>
+        `;
+        elModalProgress.classList.remove("hidden");
+        elModalResult.classList.add("hidden");
+        elModal.classList.remove("hidden");
+
+        // Simulate progress
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+          progress = Math.min(progress + Math.random() * 30, 95);
+          elModalProgressBar.style.width = progress + "%";
+        }, 500);
+
+        try {
+          const res = await fetch(`${BACKEND_URL}/api/tailor/remote`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              job_description: job.description || "",
+              company: job.company || "",
+              role: job.title || "",
+              candidate_name: CANDIDATE_NAME,
+              main_tex: FILE_STORAGE.main || "",
+              context_bank_toml: FILE_STORAGE.context || "",
+              candidate_profile: FILE_STORAGE.profile || "",
+              cover_letter_template: FILE_STORAGE.cover || "",
+              groq_api_key: GROQ_API_KEY,
+            }),
+          });
+
+          clearInterval(progressInterval);
+          elModalProgressBar.style.width = "100%";
+
+          if (res.ok) {
+            const data = await res.json();
+            elModalProgress.classList.add("hidden");
+            elModalResult.classList.remove("hidden");
+
+            // Auto-download PDF
+            const pdfBlob = base64ToBlob(data.pdf_base64, "application/pdf");
+            const url = URL.createObjectURL(pdfBlob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = data.filename || "resume.pdf";
+            link.click();
+
+            elModalResultText.innerHTML = `
+                    <p class="text-green-200">✅ Resume generated successfully!</p>
+                    ${data.cover_letter ? `<p class="mt-2 text-slate-300">Cover letter available.</p>` : ""}
+                `;
+
+            // Update job status
+            job.status = "tailored";
+            renderJobsTable();
+          } else {
+            throw new Error("Tailoring failed");
+          }
+        } catch (e) {
+          clearInterval(progressInterval);
+          elModalProgress.classList.add("hidden");
+          elModalResult.classList.remove("hidden");
+          elModalResultText.innerHTML = `<p class="text-red-200">❌ Tailoring failed: ${e.message}</p>`;
+        }
+      }
+
+      // Helper: base64 to blob
+      function base64ToBlob(base64, type) {
+        const byteCharacters = atob(base64);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        return new Blob([new Uint8Array(byteNumbers)], { type });
+      }
+
+      // Modal close
+      elModalCancel.addEventListener("click", () => {
+        elModal.classList.add("hidden");
+      });
+
+      // File listeners
+      elFiles.mainTex.addEventListener("change", () =>
+        loadFile(elFiles.mainTex, "main"),
+      );
+      elFiles.contextBank.addEventListener("change", () =>
+        loadFile(elFiles.contextBank, "context"),
+      );
+      elFiles.candidateProfile.addEventListener("change", () =>
+        loadFile(elFiles.candidateProfile, "profile"),
+      );
+      elFiles.coverTemplate.addEventListener("change", () =>
+        loadFile(elFiles.coverTemplate, "cover"),
+      );
+
+      // Config listeners
+      elBackendUrl.addEventListener("blur", checkConnection);
+      elCandidateName.addEventListener("change", updateConfig);
+      elGroqKey.addEventListener("change", updateConfig);
+
+      // Initial check
+      window.addEventListener("load", checkConnection);
+    </script>
+  </body>
+</html>

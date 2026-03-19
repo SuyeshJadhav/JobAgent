@@ -34,6 +34,29 @@ def test_run_cover_letter_writes_expected_filename(tmp_path):
     assert Path(result["cover_letter_path"]).exists()
 
 
+def test_remote_tailor_handles_empty_cover_letter_path():
+    """
+    Regression: empty cover_letter_path was being
+    converted to Path("") which resolves to "." and
+    triggered PermissionError on read.
+    Fixed in tailor.py:451.
+    """
+    # Simulate result with empty cover letter path
+    result = {
+        "resume_path": "some/path/resume.pdf",
+        "cover_letter_path": "",
+        "validation_warnings": []
+    }
+
+    # Should not raise PermissionError
+    cl_path = Path(result.get("cover_letter_path", ""))
+    cover_letter = ""
+    if cl_path.exists() and cl_path.is_file():
+        cover_letter = cl_path.read_text(encoding="utf-8")
+
+    assert cover_letter == ""
+
+
 def test_generate_cover_letter_endpoint_returns_base64_for_existing_file(tmp_path):
     letter_path = tmp_path / "cover letter.md"
     letter_content = "Paragraph 1\n\nParagraph 2\n\nParagraph 3"

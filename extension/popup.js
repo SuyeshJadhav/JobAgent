@@ -3,7 +3,7 @@
  * Manages LLM provider selection, API key, and connection status.
  */
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = JOBAGENT_CONFIG.BACKEND_URL;
 
 // ── DOM refs ──
 const statusDot = document.getElementById('status-dot');
